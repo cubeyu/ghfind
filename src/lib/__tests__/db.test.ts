@@ -3,7 +3,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createClient } from "@libsql/client";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { ROAST_CACHE_VERSION, SCORE_CACHE_VERSION } from "../cache-version";
 import type { ScoreEntry, ScoreWriteIdentity } from "../db";
 import { LEGACY_READ_FALLBACK } from "../release-versions";
@@ -418,6 +418,29 @@ describe("getArchivedRoast", () => {
       roast: null,
       roast_en: null,
     });
+    const client = createClient({ url: process.env.TURSO_DATABASE_URL! });
+    const fallback = await client.execute({
+      sql: "SELECT roast_version FROM score_release_fallbacks WHERE username = ?",
+      args: [username],
+    });
+    expect(fallback.rows).toHaveLength(0);
+  });
+
+  it("labels an immutable previous-roast fallback as historical when the score version is unchanged", async () => {
+    const username = "pronoun-rollout-fallback";
+    await writeLegacyReadFallback(username);
+    await writeScore({ ...entry, username, final_score: 88.4, scanned_at: entry.scanned_at + 10 });
+    const client = createClient({ url: process.env.TURSO_DATABASE_URL! });
+    await client.execute({
+      sql: "UPDATE scores SET score_source_snapshot_hash = NULL WHERE username = ?",
+      args: [username],
+    });
+    await expect(db.getAccountDetail(username)).resolves.toMatchObject({
+      final_score: entry.final_score,
+      legacy_read_fallback: true,
+      roast: "## 旧版中文点评\n只读回放。",
+    });
+    await expect(db.getArchivedRoast(username, "zh")).resolves.toBeNull();
   });
 
   it("rejects a late roast when the persisted score is not canonical", async () => {
@@ -532,6 +555,21 @@ describe("canonical score materialization", () => {
     if (!lease) throw new Error(`expected a synthetic lease for ${username}`);
     return { queued, lease };
   }
+
+  it("does not claim publication success when indexed cache revision cannot advance", async () => {
+    const redisModule = await import("../redis");
+    const advance = vi.spyOn(redisModule, "advanceScoreDetailRevision").mockRejectedValue(new Error("unavailable"));
+    const log = vi.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      const scan = syntheticScan("quick-cache-failure-fixture");
+      await expect(db.publishCompleteQuickScan(scan, 1_910_000_000_001)).resolves.toBeNull();
+      expect(advance).toHaveBeenCalledWith("quick-cache-failure-fixture");
+      expect(log).toHaveBeenCalled();
+      expect(JSON.stringify(log.mock.calls)).not.toContain("unavailable");
+    } finally {
+      advance.mockRestore(); log.mockRestore();
+    }
+  });
 
   it("publishes a complete quick result with canonical score provenance", async () => {
     const username = "quick-materialization-fixture";
