@@ -10,6 +10,15 @@
   // nodejs_compat populates process.env from vars/secrets (src/lib reads it).
   "compatibility_flags": ["nodejs_compat"],
   "observability": { "enabled": true },
+  // Workers Cache: a cache in front of this Worker, including calls over the
+  // router's service binding. It honors each response's own Cache-Control
+  // (RFC 9111), so the handlers' `public, s-maxage=…, stale-while-revalidate=…`
+  // finally takes effect on Cloudflare (those headers were written for
+  // Vercel's CDN and did nothing behind OpenNext). Hits skip the Worker: no
+  // CPU, no D1/Redis. The Worker version is part of the key, so every deploy
+  // starts cold. Responses that are private/no-store, set cookies, or are
+  // non-GET/HEAD are never cached. Inherited by every env below.
+  "cache": { "enabled": true },
   "alias": {
     "@opennextjs/cloudflare": "./src/shims/opennext-cloudflare.ts"
   },
