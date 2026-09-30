@@ -127,6 +127,14 @@ jobs:
       - name: Cloudflare Worker build
         run: pnpm cf:build
 
+      # Astro migration: the web (Astro) and router Workers live in apps/ and
+      # are excluded from the root typecheck; their unit tests run in `pnpm test`.
+      - name: Astro migration apps (check + build)
+        run: |
+          pnpm --filter @ghfind/web typecheck
+          pnpm --filter @ghfind/web build
+          pnpm --filter @ghfind/router typecheck
+
       - name: Record actual successful verify checkout
         run: node scripts/feed-ci-evidence.mjs record-job verify "$RUNNER_TEMP/verify.json"
       - name: Preserve verify checkout receipt

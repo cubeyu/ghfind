@@ -1,0 +1,36 @@
+{
+  // ghfind-router: front door for the Astro migration. It owns the hostname and
+  // forwards each path to ghfind-web (Astro) or the legacy Next Worker over
+  // service bindings; the route table lives in src/routes.ts.
+  //
+  // Cutover (manual, one env at a time, dev first):
+  //   1. wrangler deploy --env dev            (verify on the workers.dev URL)
+  //   2. move the custom domain: remove it from the legacy Worker's wrangler
+  //      env and add it here, then deploy both. Rollback = the reverse, or set
+  //      ROUTER_FORCE_LEGACY=1 to keep the router but send everything to legacy.
+  "name": "ghfind-router",
+  "account_id": "8f19bebe359e4ec1a24c68c5f49c1584",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-08-06",
+  "observability": { "enabled": true },
+  "env": {
+    "dev": {
+      "name": "ghfind-router-dev",
+      "workers_dev": true,
+      "services": [
+        { "binding": "WEB", "service": "ghfind-web-dev" },
+        { "binding": "LEGACY", "service": "ghfind-dev" }
+      ],
+      "vars": { "ROUTER_FORCE_LEGACY": "0" }
+    },
+    "production": {
+      "name": "ghfind-router",
+      "workers_dev": true,
+      "services": [
+        { "binding": "WEB", "service": "ghfind-web" },
+        { "binding": "LEGACY", "service": "ghfind" }
+      ],
+      "vars": { "ROUTER_FORCE_LEGACY": "0" }
+    }
+  }
+}
