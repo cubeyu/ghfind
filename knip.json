@@ -28,6 +28,11 @@
       "ignoreDependencies": [
         "cloudflare"
       ]
+    },
+    "apps/coord": {
+      "ignoreDependencies": [
+        "cloudflare"
+      ]
     }
   }
 }

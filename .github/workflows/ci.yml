@@ -137,6 +137,8 @@ jobs:
           pnpm --filter @ghfind/router typecheck
           pnpm --filter @ghfind/api typecheck
           pnpm --filter @ghfind/api exec wrangler deploy --dry-run --env dev --outdir "$RUNNER_TEMP/ghfind-api-dist"
+          pnpm --filter @ghfind/coord typecheck
+          pnpm --filter @ghfind/coord exec wrangler deploy --dry-run --env dev --outdir "$RUNNER_TEMP/ghfind-coord-dist"
 
       - name: Record actual successful verify checkout
         run: node scripts/feed-ci-evidence.mjs record-job verify "$RUNNER_TEMP/verify.json"

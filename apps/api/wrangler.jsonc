@@ -40,11 +40,18 @@
       "kv_namespaces": [
         { "binding": "GHFIND_CACHE", "id": "d66443adfd3f4fccbab02fcb41e63284" }
       ],
+      "durable_objects": {
+        "bindings": [
+          { "name": "RATE_LIMITER", "class_name": "RateLimiter", "script_name": "ghfind-coord-dev" }
+        ]
+      },
       "vars": {
         "GHFIND_DEPLOY_ENV": "preview",
         // Read-model caches on KV (src/lib/cache-store.ts), same namespace as
         // ghfind-dev. Production stays on Redis until its cutover.
         "GHFIND_CACHE_BACKEND": "kv",
+        // Rate limits on ghfind-coord-dev's RateLimiter Durable Object.
+        "GHFIND_RATELIMIT_BACKEND": "do",
         "PUBLIC_SITE_URL": "https://dev.ghfind.com",
         "NEXT_PUBLIC_SITE_URL": "https://dev.ghfind.com"
       }
