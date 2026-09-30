@@ -17,11 +17,16 @@
         "src/pages/**/*.astro",
         "src/shims/*.{ts,tsx}"
       ],
-      "ignore": [
-        "dist/**"
-      ],
       "ignoreDependencies": [
         "tailwindcss"
+      ]
+    },
+    "apps/api": {
+      "entry": [
+        "src/shims/*.ts"
+      ],
+      "ignoreDependencies": [
+        "cloudflare"
       ]
     }
   }
