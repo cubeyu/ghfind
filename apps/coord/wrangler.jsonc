@@ -55,7 +55,10 @@
       "vars": {
         "NEXT_CACHE_GC_KEEP_NEWEST": "3",
         "NEXT_CACHE_GC_MIN_IDLE_DAYS": "7",
-        "NEXT_CACHE_GC_DRY_RUN": "1"
+        // Enabled 2026-09-30 after a dry run on ghfind-next-cache: 106 of 129
+        // build dirs (24,269 objects) doomed, all idle > 7 days; the live
+        // build and 22 others kept.
+        "NEXT_CACHE_GC_DRY_RUN": "0"
       }
     }
   }
