@@ -51,6 +51,23 @@ const HEADERS = ["content-type", "cache-control", "allow", "location", "www-auth
 // whether the first request already warmed the Redis cache for the second.
 const VOLATILE_KEYS = new Set(["asOf", "cached"]);
 
+// Time-decayed scores (e.g. trending_score) are computed at query time, so
+// two requests seconds apart drift in the ~6th significant digit.
+const FLOAT_REL_TOLERANCE = 1e-6;
+
+function same(a: unknown, b: unknown): boolean {
+  if (typeof a === "number" && typeof b === "number" && !(Number.isInteger(a) && Number.isInteger(b))) {
+    return Math.abs(a - b) <= FLOAT_REL_TOLERANCE * Math.max(Math.abs(a), Math.abs(b));
+  }
+  if (Array.isArray(a) && Array.isArray(b)) return a.length === b.length && a.every((x, i) => same(x, b[i]));
+  if (a && b && typeof a === "object" && typeof b === "object") {
+    const ka = Object.keys(a);
+    const kb = Object.keys(b);
+    return ka.length === kb.length && ka.every((k) => same((a as Record<string, unknown>)[k], (b as Record<string, unknown>)[k]));
+  }
+  return a === b;
+}
+
 function normalize(text: string, base: string): string {
   let out = text;
   for (const host of [...sites, new URL(base).origin]) out = out.split(host).join("{host}");
@@ -96,7 +113,7 @@ for (const c of CASES) {
     f === "status" ? ["status", a.status, b.status] : [`header ${f}`, a.headers[f], b.headers[f]],
   );
   fields.push(["body", a.body, b.body]);
-  const bad = fields.filter(([, x, y]) => JSON.stringify(x) !== JSON.stringify(y));
+  const bad = fields.filter(([, x, y]) => !same(x, y));
   if (!bad.length) {
     console.log(`✓ ${label} (${a.status})`);
     continue;
