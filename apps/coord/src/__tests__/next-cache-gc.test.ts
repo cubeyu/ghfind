@@ -25,6 +25,7 @@ function fakeBucket(objects: GcObject[]) {
       calls.delete++;
       keys.forEach((k) => store.delete(k));
     },
+    async put() {},
   };
   return { bucket, store, calls };
 }
@@ -94,6 +95,14 @@ describe("gcNextCache", () => {
     const report = await gcNextCache(bucket, { ...opts, maxOps: 3 });
     expect(report.complete).toBe(false);
     expect(report.doomed).toEqual([]);
+    expect(calls.delete).toBe(0);
+  });
+
+  it("stops at the wall-clock deadline without deleting on a partial scan", async () => {
+    const { bucket, calls } = fakeBucket([...build("old", 5, 30), ...build("a", 1, 0), ...build("b", 1, 0)]);
+    const report = await gcNextCache(bucket, { ...opts, deadline: Date.now() - 1 });
+    expect(report.complete).toBe(false);
+    expect(report.ops).toBe(0);
     expect(calls.delete).toBe(0);
   });
 

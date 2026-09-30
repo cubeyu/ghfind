@@ -28,7 +28,8 @@
       "vars": {
         "NEXT_CACHE_GC_KEEP_NEWEST": "2",
         "NEXT_CACHE_GC_MIN_IDLE_DAYS": "3",
-        "NEXT_CACHE_GC_DRY_RUN": "1"
+        // Enabled 2026-09-30 after a dry run (110 of 130 build dirs doomed).
+        "NEXT_CACHE_GC_DRY_RUN": "0"
       }
     },
     "production": {

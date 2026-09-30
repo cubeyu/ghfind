@@ -28,6 +28,7 @@ export interface GcBucket {
     limit?: number;
   }): Promise<{ objects: GcObject[]; delimitedPrefixes: string[]; truncated: boolean; cursor?: string }>;
   delete(keys: string[]): Promise<void>;
+  put(key: string, value: string): Promise<unknown>;
 }
 
 export interface GcOptions {
@@ -39,6 +40,8 @@ export interface GcOptions {
   dryRun: boolean;
   /** Upper bound on R2 list/delete calls per run; unfinished work resumes next run. */
   maxOps: number;
+  /** Wall-clock deadline (epoch ms) after which the run stops and resumes next time. */
+  deadline?: number;
 }
 
 export interface BuildDir {
@@ -59,9 +62,12 @@ export interface GcReport {
 
 class OpsBudget {
   used = 0;
-  constructor(private readonly max: number) {}
+  constructor(
+    private readonly max: number,
+    private readonly deadline = Infinity,
+  ) {}
   take(): boolean {
-    if (this.used >= this.max) return false;
+    if (this.used >= this.max || Date.now() >= this.deadline) return false;
     this.used++;
     return true;
   }
@@ -116,7 +122,7 @@ async function deletePrefix(bucket: GcBucket, prefix: string, budget: OpsBudget)
 }
 
 export async function gcNextCache(bucket: GcBucket, opts: GcOptions): Promise<GcReport> {
-  const budget = new OpsBudget(opts.maxOps);
+  const budget = new OpsBudget(opts.maxOps, opts.deadline);
   const report: GcReport = {
     builds: [],
     kept: [],
