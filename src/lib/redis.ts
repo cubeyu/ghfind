@@ -9,6 +9,7 @@
  */
 
 import { protectedScan, ScanBusyError, scanTtl } from "./scan-protection";
+import { selectCacheStore, type CacheStore } from "./cache-store";
 import { Ratelimit } from "@upstash/ratelimit";
 import { Redis } from "@upstash/redis";
 import { deployEnv } from "@/lib/deploy-env";
@@ -98,6 +99,15 @@ function getRedis(): Redis | null {
   // from poisoning static rendering (the /developers facet boards).
   redis = new Redis({ url, token, cache: "default", signal: () => AbortSignal.timeout(3000), retry: false });
   return redis;
+}
+
+/**
+ * Backend for the public read-model caches below (KV or Redis, per deployment
+ * — see cache-store.ts). Scan/roast/verdict caches coordinate with locks and
+ * stay on Redis until they move to Durable Objects.
+ */
+function cacheStore(): CacheStore | null {
+  return selectCacheStore(getRedis());
 }
 
 export const scanKey = (username: string) =>
@@ -453,7 +463,7 @@ const projectAnalysisResultKey = (fingerprint: string) =>
 export async function getCachedProjectAnalysisId(
   fingerprint: string,
 ): Promise<string | null> {
-  const r = getRedis();
+  const r = cacheStore();
   if (!r) return null;
   try {
     const value = await r.get<string>(projectAnalysisResultKey(fingerprint));
@@ -467,12 +477,10 @@ export async function setCachedProjectAnalysisId(
   fingerprint: string,
   analysisId: string,
 ): Promise<void> {
-  const r = getRedis();
+  const r = cacheStore();
   if (!r) return;
   try {
-    await r.set(projectAnalysisResultKey(fingerprint), analysisId, {
-      ex: PROJECT_ANALYSIS_RESULT_TTL_SECONDS,
-    });
+    await r.set(projectAnalysisResultKey(fingerprint), analysisId, PROJECT_ANALYSIS_RESULT_TTL_SECONDS);
   } catch {
     // Best-effort index only. Durable project analysis remains the source of truth.
   }
@@ -481,7 +489,7 @@ export async function setCachedProjectAnalysisId(
 export async function clearCachedProjectAnalysisId(
   fingerprint: string,
 ): Promise<void> {
-  const r = getRedis();
+  const r = cacheStore();
   if (!r) return;
   await r.del(projectAnalysisResultKey(fingerprint)).catch(() => {});
 }
@@ -915,7 +923,7 @@ const SCORE_HISTOGRAM_KEY = "score-hist:v1";
 const SCORE_HISTOGRAM_TTL_SECONDS = 300;
 
 export async function getCachedScoreHistogram(): Promise<ScoreHistogramRow[] | null> {
-  const r = getRedis();
+  const r = cacheStore();
   if (!r) return null;
   try {
     return (await r.get<ScoreHistogramRow[]>(SCORE_HISTOGRAM_KEY)) ?? null;
@@ -925,10 +933,10 @@ export async function getCachedScoreHistogram(): Promise<ScoreHistogramRow[] | n
 }
 
 export async function setCachedScoreHistogram(rows: ScoreHistogramRow[]): Promise<void> {
-  const r = getRedis();
+  const r = cacheStore();
   if (!r) return;
   try {
-    await r.set(SCORE_HISTOGRAM_KEY, rows, { ex: SCORE_HISTOGRAM_TTL_SECONDS });
+    await r.set(SCORE_HISTOGRAM_KEY, rows, SCORE_HISTOGRAM_TTL_SECONDS);
   } catch {
     // best-effort
   }
@@ -938,7 +946,7 @@ const STATS_KEY = "stats:count";
 const STATS_TTL_SECONDS = 60;
 
 export async function getCachedStats(): Promise<number | null> {
-  const r = getRedis();
+  const r = cacheStore();
   if (!r) return null;
   try {
     const v = await r.get<number>(STATS_KEY);
@@ -949,10 +957,10 @@ export async function getCachedStats(): Promise<number | null> {
 }
 
 export async function setCachedStats(total: number): Promise<void> {
-  const r = getRedis();
+  const r = cacheStore();
   if (!r) return;
   try {
-    await r.set(STATS_KEY, total, { ex: STATS_TTL_SECONDS });
+    await r.set(STATS_KEY, total, STATS_TTL_SECONDS);
   } catch {
     // best-effort
   }
@@ -1007,7 +1015,7 @@ export async function getCachedLeaderboard(
   view: LeaderboardCacheView = "trending",
   window: LeaderboardWindow = "all",
 ): Promise<LeaderboardEntry[] | null> {
-  const r = getRedis();
+  const r = cacheStore();
   if (!r) return null;
   try {
     return (await r.get<LeaderboardEntry[]>(leaderboardKey(view, window))) ?? null;
@@ -1021,17 +1029,17 @@ export async function setCachedLeaderboard(
   view: LeaderboardCacheView = "trending",
   window: LeaderboardWindow = "all",
 ): Promise<void> {
-  const r = getRedis();
+  const r = cacheStore();
   if (!r) return;
   try {
-    await r.set(leaderboardKey(view, window), entries, { ex: LEADERBOARD_TTL_SECONDS });
+    await r.set(leaderboardKey(view, window), entries, LEADERBOARD_TTL_SECONDS);
   } catch {
     // best-effort
   }
 }
 
 export async function clearCachedLeaderboards(): Promise<void> {
-  const r = getRedis();
+  const r = cacheStore();
   if (!r) return;
   try {
     await r.del(
@@ -1063,7 +1071,7 @@ const facetListKey = (type: FacetType, value: string) => `facets:list:${type}:${
 export async function getCachedFacetCategories(
   type: FacetType,
 ): Promise<FacetCategory[] | null> {
-  const r = getRedis();
+  const r = cacheStore();
   if (!r) return null;
   try {
     return (await r.get<FacetCategory[]>(facetCategoriesKey(type))) ?? null;
@@ -1076,10 +1084,10 @@ export async function setCachedFacetCategories(
   type: FacetType,
   categories: FacetCategory[],
 ): Promise<void> {
-  const r = getRedis();
+  const r = cacheStore();
   if (!r) return;
   try {
-    await r.set(facetCategoriesKey(type), categories, { ex: FACET_TTL_SECONDS });
+    await r.set(facetCategoriesKey(type), categories, FACET_TTL_SECONDS);
   } catch {
     // best-effort
   }
@@ -1089,7 +1097,7 @@ export async function getCachedFacetDevelopers(
   type: FacetType,
   value: string,
 ): Promise<LeaderboardEntry[] | null> {
-  const r = getRedis();
+  const r = cacheStore();
   if (!r) return null;
   try {
     return (await r.get<LeaderboardEntry[]>(facetListKey(type, value))) ?? null;
@@ -1103,10 +1111,10 @@ export async function setCachedFacetDevelopers(
   value: string,
   entries: LeaderboardEntry[],
 ): Promise<void> {
-  const r = getRedis();
+  const r = cacheStore();
   if (!r) return;
   try {
-    await r.set(facetListKey(type, value), entries, { ex: FACET_TTL_SECONDS });
+    await r.set(facetListKey(type, value), entries, FACET_TTL_SECONDS);
   } catch {
     // best-effort
   }
@@ -1115,7 +1123,7 @@ export async function setCachedFacetDevelopers(
 /** Generic JSON cache used by the project-discovery service. Keys include their
  * own namespace and normalized filters; values are always public read models. */
 export async function getCachedProjectValue<T>(key: string): Promise<T | null> {
-  const r = getRedis();
+  const r = cacheStore();
   if (!r) return null;
   try {
     return (await r.get<T>(key)) ?? null;
@@ -1125,10 +1133,10 @@ export async function getCachedProjectValue<T>(key: string): Promise<T | null> {
 }
 
 export async function setCachedProjectValue<T>(key: string, value: T): Promise<void> {
-  const r = getRedis();
+  const r = cacheStore();
   if (!r) return;
   try {
-    await r.set(key, value, { ex: PROJECT_DISCOVERY_TTL_SECONDS });
+    await r.set(key, value, PROJECT_DISCOVERY_TTL_SECONDS);
   } catch {
     // best-effort cache
   }
@@ -1144,7 +1152,7 @@ const REACTION_COUNTS_TTL_SECONDS = 60;
 export async function getCachedReactionCounts(
   target: string,
 ): Promise<ProfileReactionCounts | null> {
-  const r = getRedis();
+  const r = cacheStore();
   if (!r) return null;
   try {
     return (await r.get<ProfileReactionCounts>(reactionCountsKey(target))) ?? null;
@@ -1157,17 +1165,17 @@ export async function setCachedReactionCounts(
   target: string,
   counts: ProfileReactionCounts,
 ): Promise<void> {
-  const r = getRedis();
+  const r = cacheStore();
   if (!r) return;
   try {
-    await r.set(reactionCountsKey(target), counts, { ex: REACTION_COUNTS_TTL_SECONDS });
+    await r.set(reactionCountsKey(target), counts, REACTION_COUNTS_TTL_SECONDS);
   } catch {
     // best-effort
   }
 }
 
 export async function clearCachedReactionCounts(target: string): Promise<void> {
-  const r = getRedis();
+  const r = cacheStore();
   if (!r) return;
   try {
     await r.del(reactionCountsKey(target));

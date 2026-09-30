@@ -54,8 +54,14 @@
       "r2_buckets": [
         { "binding": "NEXT_INC_CACHE_R2_BUCKET", "bucket_name": "ghfind-next-cache-dev" }
       ],
+      // Public read-model caches (src/lib/cache-store.ts). Must match
+      // ghfind-api's binding/backend so clears on either side hit both.
+      "kv_namespaces": [
+        { "binding": "GHFIND_CACHE", "id": "d66443adfd3f4fccbab02fcb41e63284" }
+      ],
       "vars": {
         "GHFIND_DEPLOY_ENV": "preview",
+        "GHFIND_CACHE_BACKEND": "kv",
         // Explicit: OpenNext bakes .env values (localhost) into the bundle as
         // fallbacks; bindings must win for anything origin-derived.
         "PUBLIC_SITE_URL": "https://dev.ghfind.com",
@@ -96,8 +102,14 @@
       "r2_buckets": [
         { "binding": "NEXT_INC_CACHE_R2_BUCKET", "bucket_name": "ghfind-next-cache-dev" }
       ],
+      // Public read-model caches (src/lib/cache-store.ts). Must match
+      // ghfind-api's binding/backend so clears on either side hit both.
+      "kv_namespaces": [
+        { "binding": "GHFIND_CACHE", "id": "d66443adfd3f4fccbab02fcb41e63284" }
+      ],
       "vars": {
-        "GHFIND_DEPLOY_ENV": "preview"
+        "GHFIND_DEPLOY_ENV": "preview",
+        "GHFIND_CACHE_BACKEND": "kv"
       }
     }
   }
