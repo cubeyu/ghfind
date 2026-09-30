@@ -12,17 +12,38 @@
     "bindings": [{ "name": "RATE_LIMITER", "class_name": "RateLimiter" }]
   },
   "migrations": [{ "tag": "v1", "new_sqlite_classes": ["RateLimiter"] }],
+  // Scheduled GC of the legacy Next Worker's OpenNext R2 cache
+  // (src/next-cache-gc.ts): old build directories are never deleted by
+  // OpenNext and grew the buckets without bound. Starts as a dry run
+  // (NEXT_CACHE_GC_DRY_RUN != "0" only logs the plan).
   "env": {
     "dev": {
       "name": "ghfind-coord-dev",
       "durable_objects": {
         "bindings": [{ "name": "RATE_LIMITER", "class_name": "RateLimiter" }]
+      },
+      // dev also holds every PR preview's builds, so it churns faster.
+      "r2_buckets": [{ "binding": "NEXT_INC_CACHE_R2_BUCKET", "bucket_name": "ghfind-next-cache-dev" }],
+      "triggers": { "crons": ["23 */6 * * *"] },
+      "vars": {
+        "NEXT_CACHE_GC_KEEP_NEWEST": "2",
+        "NEXT_CACHE_GC_MIN_IDLE_DAYS": "3",
+        // Enabled 2026-09-30 after a dry run (110 of 130 build dirs doomed).
+        "NEXT_CACHE_GC_DRY_RUN": "0"
       }
     },
     "production": {
       "name": "ghfind-coord",
       "durable_objects": {
         "bindings": [{ "name": "RATE_LIMITER", "class_name": "RateLimiter" }]
+      },
+      // Keep 3 builds and a week of idleness so rollbacks keep their cache.
+      "r2_buckets": [{ "binding": "NEXT_INC_CACHE_R2_BUCKET", "bucket_name": "ghfind-next-cache" }],
+      "triggers": { "crons": ["41 3 * * *"] },
+      "vars": {
+        "NEXT_CACHE_GC_KEEP_NEWEST": "3",
+        "NEXT_CACHE_GC_MIN_IDLE_DAYS": "7",
+        "NEXT_CACHE_GC_DRY_RUN": "1"
       }
     }
   }
