@@ -63,13 +63,15 @@
       // (src/lib/rate-limit-backend.ts); same binding as ghfind-api-dev.
       "durable_objects": {
         "bindings": [
-          { "name": "RATE_LIMITER", "class_name": "RateLimiter", "script_name": "ghfind-coord-dev" }
+          { "name": "RATE_LIMITER", "class_name": "RateLimiter", "script_name": "ghfind-coord-dev" },
+          { "name": "COORD_KV", "class_name": "KeyValue", "script_name": "ghfind-coord-dev" }
         ]
       },
       "vars": {
         "GHFIND_DEPLOY_ENV": "preview",
         "GHFIND_CACHE_BACKEND": "kv",
         "GHFIND_RATELIMIT_BACKEND": "do",
+        "GHFIND_COORD_BACKEND": "do",
         // Explicit: OpenNext bakes .env values (localhost) into the bundle as
         // fallbacks; bindings must win for anything origin-derived.
         "PUBLIC_SITE_URL": "https://dev.ghfind.com",
@@ -119,13 +121,15 @@
       // (src/lib/rate-limit-backend.ts); same binding as ghfind-api-dev.
       "durable_objects": {
         "bindings": [
-          { "name": "RATE_LIMITER", "class_name": "RateLimiter", "script_name": "ghfind-coord-dev" }
+          { "name": "RATE_LIMITER", "class_name": "RateLimiter", "script_name": "ghfind-coord-dev" },
+          { "name": "COORD_KV", "class_name": "KeyValue", "script_name": "ghfind-coord-dev" }
         ]
       },
       "vars": {
         "GHFIND_DEPLOY_ENV": "preview",
         "GHFIND_CACHE_BACKEND": "kv",
-        "GHFIND_RATELIMIT_BACKEND": "do"
+        "GHFIND_RATELIMIT_BACKEND": "do",
+        "GHFIND_COORD_BACKEND": "do"
       }
     }
   }
