@@ -11,6 +11,7 @@
 import { protectedScan, ScanBusyError, scanTtl } from "./scan-protection";
 import { selectCacheStore, type CacheStore } from "./cache-store";
 import { selectAtomicStore, type AtomicStore } from "./atomic-store";
+import { parsePayload, scanSlot, scanSlots, slotCoordinator } from "./scan-slots";
 import {
   durableObjectLimiter,
   getRateLimiterBinding,
@@ -151,6 +152,15 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 export async function getCachedScan(username: string): Promise<ScanResult | null> {
   if (bypassGeneratedCaches()) return null;
+  const slots = scanSlots();
+  if (slots) {
+    try {
+      const cached = parsePayload<ScanResult>(await scanSlot(slots, scanKey(username)).payload());
+      return cached ? { ...cached, scoring: score(cached.metrics) } : null;
+    } catch {
+      return null;
+    }
+  }
   const r = getRedis();
   if (!r) return null;
   try {
@@ -163,6 +173,11 @@ export async function getCachedScan(username: string): Promise<ScanResult | null
 
 export async function setCachedScan(username: string, scan: ScanResult): Promise<void> {
   if (bypassGeneratedCaches()) return;
+  const slots = scanSlots();
+  if (slots) {
+    await scanSlot(slots, scanKey(username)).setPayload(JSON.stringify(scan), scanTtl()).catch(() => {});
+    return;
+  }
   const r = getRedis();
   if (!r) return;
   try {
@@ -174,6 +189,11 @@ export async function setCachedScan(username: string, scan: ScanResult): Promise
 
 /** Remove a bounded quick snapshot when it is corrupt or superseded. */
 export async function clearCachedScan(username: string): Promise<void> {
+  const slots = scanSlots();
+  if (slots) {
+    await scanSlot(slots, scanKey(username)).clearPayload().catch(() => {});
+    return;
+  }
   const r = getRedis();
   if (!r) return;
   await r.del(scanKey(username)).catch(() => {});
@@ -182,7 +202,10 @@ export async function clearCachedScan(username: string): Promise<void> {
 const scoreDetailRevisionKey = (username: string) =>
   `score-detail-revision:${SCORE_CACHE_VERSION}:${PUBLIC_SCAN_COLLECTION_VERSION}:${username.toLowerCase()}`;
 
-async function scoreDetailRevision(r: Redis, username: string): Promise<string> {
+async function scoreDetailRevision(
+  r: { get<T>(key: string): Promise<T | null> },
+  username: string,
+): Promise<string> {
   try {
     const revision = await r.get<string>(scoreDetailRevisionKey(username));
     if (revision === null) return "initial";
@@ -199,6 +222,13 @@ async function scoreDetailRevision(r: Redis, username: string): Promise<string> 
  * A configured Redis failure must fail publication rather than claim freshness.
  */
 export async function advanceScoreDetailRevision(username: string): Promise<void> {
+  // With Durable Objects the pointer lives in the KeyValue object (no TTL).
+  if (scanSlots()) {
+    const store = atomicStore();
+    if (!store) throw new ScanBusyError();
+    await store.set(scoreDetailRevisionKey(username), crypto.randomUUID());
+    return;
+  }
   const r = getRedis();
   if (!r) {
     if (isProductionDeployment()) throw new ScanBusyError();
@@ -212,8 +242,29 @@ export async function getCachedScoreDetail(
   username: string,
   load: () => Promise<AccountDetail | null>,
 ): Promise<AccountDetail | null> {
-  const r = getRedis();
+  const slots = scanSlots();
+  const pointers = slots ? atomicStore() : null;
   if (bypassGeneratedCaches() && !isProductionDeployment()) return load();
+  if (slots && pointers) {
+    for (let attempt = 0; attempt < 3; attempt++) {
+      const revision = await scoreDetailRevision(pointers, username);
+      const key = `score-detail:${SCORE_CACHE_VERSION}:${PUBLIC_SCAN_COLLECTION_VERSION}:${username.toLowerCase()}:generation:${revision}`;
+      const slot = scanSlot(slots, key);
+      const result = await protectedScan({
+        coordinator: slotCoordinator(slot, "score-detail:active-readers:v1", false),
+        key,
+        read: async () => {
+          try { return parsePayload<{ detail: AccountDetail | null }>(await slot.payload()); }
+          catch { return null; }
+        },
+        produce: async () => ({ detail: await load() }),
+        ttl: result => result.detail ? scanTtl() : 10,
+      });
+      if (await scoreDetailRevision(pointers, username) === revision) return result.detail;
+    }
+    throw new ScanBusyError();
+  }
+  const r = getRedis();
   if (!r) {
     if (isProductionDeployment()) throw new ScanBusyError();
     return load();
@@ -250,6 +301,26 @@ export async function coalesceScan(
   options: { force?: boolean } = {},
 ): Promise<ScanResult> {
   if (bypassGeneratedCaches() && !isProductionDeployment()) return producer();
+  const slots = scanSlots();
+  if (slots) {
+    const slot = scanSlot(slots, scanKey(username));
+    let baseline = "";
+    if (options.force) {
+      try { baseline = (await slot.revision()) ?? ""; }
+      catch { throw new ScanBusyError(); }
+    }
+    return protectedScan({
+      coordinator: slotCoordinator(slot, "scan:active-producers:v1", true),
+      key: scanKey(username),
+      read: options.force ? async () => {
+        try {
+          const cached = parsePayload<ScanResult>(await slot.payloadAfter(baseline));
+          return cached ? { ...cached, scoring: score(cached.metrics) } : null;
+        } catch { throw new ScanBusyError(); }
+      } : () => getCachedScan(username),
+      produce: producer,
+    });
+  }
   const r = getRedis();
   if (!r) {
     if (isProductionDeployment()) throw new ScanBusyError();

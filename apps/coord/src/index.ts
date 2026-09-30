@@ -7,6 +7,8 @@ import { gcNextCache, type GcBucket, type GcReport } from "./next-cache-gc";
 
 export { KeyValue } from "./key-value";
 export { RateLimiter } from "./rate-limiter";
+export { ScanCapacity } from "./scan-capacity";
+export { ScanSlot } from "./scan-slot";
 
 interface Env {
   /** The legacy Next Worker's OpenNext incremental cache bucket for this env. */
