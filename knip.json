@@ -3,9 +3,26 @@
   "workspaces": {
     ".": {
       "vitest": {
-        "entry": ["src/**/*.test.{ts,tsx}", "packages/**/*.test.{ts,tsx}"]
+        "entry": [
+          "src/**/*.test.{ts,tsx}",
+          "packages/**/*.test.{ts,tsx}"
+        ]
       },
-      "ignore": ["packages/ghfind-js/**"]
+      "ignore": [
+        "packages/ghfind-js/**"
+      ]
+    },
+    "apps/web": {
+      "entry": [
+        "src/pages/**/*.astro",
+        "src/shims/*.{ts,tsx}"
+      ],
+      "ignore": [
+        "dist/**"
+      ],
+      "ignoreDependencies": [
+        "tailwindcss"
+      ]
     }
   }
 }
