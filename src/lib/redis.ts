@@ -10,6 +10,12 @@
 
 import { protectedScan, ScanBusyError, scanTtl } from "./scan-protection";
 import { selectCacheStore, type CacheStore } from "./cache-store";
+import {
+  durableObjectLimiter,
+  getRateLimiterBinding,
+  type Limiter,
+  type LimitWindow,
+} from "./rate-limit-backend";
 import { Ratelimit } from "@upstash/ratelimit";
 import { Redis } from "@upstash/redis";
 import { deployEnv } from "@/lib/deploy-env";
@@ -34,19 +40,7 @@ import type { ProfileReactionCounts } from "./reactions";
 import type { RoastJudgeResult, RoastLine, ScanResult } from "./types";
 
 let redis: Redis | null = null;
-let scanLimiter: Ratelimit | null = null;
-let scanNetworkLimiter: Ratelimit | null = null;
-let campaignLeaderboardReadLimiter: Ratelimit | null = null;
-let projectAnalysisLimiter: Ratelimit | null = null;
-let mcpLimiter: Ratelimit | null = null;
-let roastRequestLimiter: Ratelimit | null = null;
-let roastRequestNetworkLimiter: Ratelimit | null = null;
-let roastMinuteLimiter: Ratelimit | null = null;
-let roastDayLimiter: Ratelimit | null = null;
-let roastNetworkMinuteLimiter: Ratelimit | null = null;
-let roastNetworkDayLimiter: Ratelimit | null = null;
-let verdictMinuteLimiter: Ratelimit | null = null;
-let verdictDayLimiter: Ratelimit | null = null;
+const limiters = new Map<string, Limiter>();
 const localProjectAnalysisWindows = new Map<string, { count: number; reset: number }>();
 const PROJECT_ANALYSIS_LIMIT = 5;
 const PROJECT_ANALYSIS_WINDOW_MS = 60 * 60 * 1_000;
@@ -99,6 +93,36 @@ function getRedis(): Redis | null {
   // from poisoning static rendering (the /developers facet boards).
   redis = new Redis({ url, token, cache: "default", signal: () => AbortSignal.timeout(3000), retry: false });
   return redis;
+}
+
+/**
+ * Sliding-window limiter for `prefix`, memoized per backend. The RateLimiter
+ * Durable Object (ghfind-coord) when the deployment sets
+ * GHFIND_RATELIMIT_BACKEND=do and binds RATE_LIMITER; otherwise Upstash.
+ * Both run the same algorithm over the same `<prefix>:<id>` keys. Null when
+ * neither is available (callers decide fail-open vs fail-closed).
+ */
+function rateLimiter(prefix: string, tokens: number, window: LimitWindow): Limiter | null {
+  const durableObjects =
+    process.env.GHFIND_RATELIMIT_BACKEND === "do" ? getRateLimiterBinding() : null;
+  const memoKey = `${durableObjects ? "do" : "redis"}:${prefix}`;
+  const existing = limiters.get(memoKey);
+  if (existing) return existing;
+  let limiter: Limiter;
+  if (durableObjects) {
+    limiter = durableObjectLimiter(durableObjects, prefix, tokens, window);
+  } else {
+    const r = getRedis();
+    if (!r) return null;
+    limiter = new Ratelimit({
+      redis: r,
+      limiter: Ratelimit.slidingWindow(tokens, window),
+      prefix,
+      analytics: false,
+    });
+  }
+  limiters.set(memoKey, limiter);
+  return limiter;
 }
 
 /**
@@ -307,16 +331,8 @@ export function rateLimitHeaders(result: RateLimitResult): Record<string, string
 
 /** Per-principal sliding-window limiter for scan and bounded public-read routes. */
 export async function checkRateLimit(principal: string): Promise<RateLimitResult> {
-  const r = getRedis();
-  if (!r) return unavailableRateLimitResult("scan", "missing_redis_config");
-  if (!scanLimiter) {
-    scanLimiter = new Ratelimit({
-      redis: r,
-      limiter: Ratelimit.slidingWindow(10, "60 s"),
-      prefix: "rl:scan",
-      analytics: false,
-    });
-  }
+  const scanLimiter = rateLimiter("rl:scan", 10, "60 s");
+  if (!scanLimiter) return unavailableRateLimitResult("scan", "missing_redis_config");
   try {
     const { success, limit, remaining, reset } = await scanLimiter.limit(principal);
     return { success, limit, remaining, reset };
@@ -330,16 +346,8 @@ export async function checkRateLimit(principal: string): Promise<RateLimitResult
 
 /** Wider second-line scan budget for browsers sharing one public network. */
 export async function checkScanNetworkRateLimit(ip: string): Promise<RateLimitResult> {
-  const r = getRedis();
-  if (!r) return unavailableRateLimitResult("scan_network", "missing_redis_config");
-  if (!scanNetworkLimiter) {
-    scanNetworkLimiter = new Ratelimit({
-      redis: r,
-      limiter: Ratelimit.slidingWindow(60, "60 s"),
-      prefix: "rl:scan-network",
-      analytics: false,
-    });
-  }
+  const scanNetworkLimiter = rateLimiter("rl:scan-network", 60, "60 s");
+  if (!scanNetworkLimiter) return unavailableRateLimitResult("scan_network", "missing_redis_config");
   try {
     const { success, limit, remaining, reset } = await scanNetworkLimiter.limit(ip);
     return { success, limit, remaining, reset };
@@ -358,20 +366,12 @@ export async function checkScanNetworkRateLimit(ip: string): Promise<RateLimitRe
 export async function checkCampaignLeaderboardReadRateLimit(
   ip: string,
 ): Promise<RateLimitResult> {
-  const r = getRedis();
-  if (!r) {
+  const campaignLeaderboardReadLimiter = rateLimiter("rl:campaign-leaderboard-read", 600, "60 s");
+  if (!campaignLeaderboardReadLimiter) {
     return unavailableRateLimitResult(
       "campaign_leaderboard_read",
       "missing_redis_config",
     );
-  }
-  if (!campaignLeaderboardReadLimiter) {
-    campaignLeaderboardReadLimiter = new Ratelimit({
-      redis: r,
-      limiter: Ratelimit.slidingWindow(600, "60 s"),
-      prefix: "rl:campaign-leaderboard-read",
-      analytics: false,
-    });
   }
   try {
     const { success, limit, remaining, reset } =
@@ -391,16 +391,8 @@ export async function checkCampaignLeaderboardReadRateLimit(
  * spend our model credit, but they still invoke a function and read Turso.
  */
 export async function checkRoastRequestRateLimit(principal: string): Promise<RateLimitResult> {
-  const r = getRedis();
-  if (!r) return unavailableRateLimitResult("roast_request", "missing_redis_config");
-  if (!roastRequestLimiter) {
-    roastRequestLimiter = new Ratelimit({
-      redis: r,
-      limiter: Ratelimit.slidingWindow(20, "60 s"),
-      prefix: "rl:roast-request",
-      analytics: false,
-    });
-  }
+  const roastRequestLimiter = rateLimiter("rl:roast-request", 20, "60 s");
+  if (!roastRequestLimiter) return unavailableRateLimitResult("roast_request", "missing_redis_config");
   try {
     const { success, limit, remaining, reset } = await roastRequestLimiter.limit(principal);
     return { success, limit, remaining, reset };
@@ -414,16 +406,8 @@ export async function checkRoastRequestRateLimit(principal: string): Promise<Rat
 
 /** Wider second-line request budget for browsers sharing one public network. */
 export async function checkRoastRequestNetworkRateLimit(ip: string): Promise<RateLimitResult> {
-  const r = getRedis();
-  if (!r) return unavailableRateLimitResult("roast_request_network", "missing_redis_config");
-  if (!roastRequestNetworkLimiter) {
-    roastRequestNetworkLimiter = new Ratelimit({
-      redis: r,
-      limiter: Ratelimit.slidingWindow(120, "60 s"),
-      prefix: "rl:roast-request-network",
-      analytics: false,
-    });
-  }
+  const roastRequestNetworkLimiter = rateLimiter("rl:roast-request-network", 120, "60 s");
+  if (!roastRequestNetworkLimiter) return unavailableRateLimitResult("roast_request_network", "missing_redis_config");
   try {
     const { success, limit, remaining, reset } = await roastRequestNetworkLimiter.limit(ip);
     return { success, limit, remaining, reset };
@@ -439,16 +423,8 @@ export async function checkRoastRequestNetworkRateLimit(ip: string): Promise<Rat
  * tighter budget than account scans. Turso still deduplicates identical active
  * analyses; this protects against many distinct repository submissions. */
 export async function checkProjectAnalysisRateLimit(ip: string): Promise<RateLimitResult> {
-  const r = getRedis();
-  if (!r) return localProjectAnalysisRateLimit(ip);
-  if (!projectAnalysisLimiter) {
-    projectAnalysisLimiter = new Ratelimit({
-      redis: r,
-      limiter: Ratelimit.slidingWindow(PROJECT_ANALYSIS_LIMIT, "60 m"),
-      prefix: "rl:project-analysis",
-      analytics: false,
-    });
-  }
+  const projectAnalysisLimiter = rateLimiter("rl:project-analysis", PROJECT_ANALYSIS_LIMIT, "60 m");
+  if (!projectAnalysisLimiter) return localProjectAnalysisRateLimit(ip);
   try {
     const { success, limit, remaining, reset } = await projectAnalysisLimiter.limit(ip);
     return { success, limit, remaining, reset };
@@ -521,16 +497,8 @@ function localProjectAnalysisRateLimit(ip: string): RateLimitResult {
  * cap harder to protect the GitHub token and DB.
  */
 export async function checkMcpRateLimit(ip: string): Promise<RateLimitResult> {
-  const r = getRedis();
-  if (!r) return unavailableRateLimitResult("mcp", "missing_redis_config");
-  if (!mcpLimiter) {
-    mcpLimiter = new Ratelimit({
-      redis: r,
-      limiter: Ratelimit.slidingWindow(15, "60 s"),
-      prefix: "rl:mcp",
-      analytics: false,
-    });
-  }
+  const mcpLimiter = rateLimiter("rl:mcp", 15, "60 s");
+  if (!mcpLimiter) return unavailableRateLimitResult("mcp", "missing_redis_config");
   try {
     const { success } = await mcpLimiter.limit(ip);
     return { success };
@@ -548,24 +516,9 @@ export async function checkMcpRateLimit(ip: string): Promise<RateLimitResult> {
  * daily cap. Only gates the default model; BYO keys are not limited.
  */
 export async function checkRoastRateLimit(principal: string): Promise<RateLimitResult> {
-  const r = getRedis();
-  if (!r) return unavailableRateLimitResult("roast_generation", "missing_redis_config");
-  if (!roastMinuteLimiter) {
-    roastMinuteLimiter = new Ratelimit({
-      redis: r,
-      limiter: Ratelimit.slidingWindow(8, "60 s"),
-      prefix: "rl:roast:m",
-      analytics: false,
-    });
-  }
-  if (!roastDayLimiter) {
-    roastDayLimiter = new Ratelimit({
-      redis: r,
-      limiter: Ratelimit.slidingWindow(60, "1 d"),
-      prefix: "rl:roast:d",
-      analytics: false,
-    });
-  }
+  const roastMinuteLimiter = rateLimiter("rl:roast:m", 8, "60 s");
+  const roastDayLimiter = rateLimiter("rl:roast:d", 60, "1 d");
+  if (!roastMinuteLimiter || !roastDayLimiter) return unavailableRateLimitResult("roast_generation", "missing_redis_config");
   try {
     const [minute, day] = await Promise.all([
       roastMinuteLimiter.limit(principal),
@@ -582,24 +535,9 @@ export async function checkRoastRateLimit(principal: string): Promise<RateLimitR
 
 /** Wider network-level generation budget, separate from each signed browser. */
 export async function checkRoastNetworkRateLimit(ip: string): Promise<RateLimitResult> {
-  const r = getRedis();
-  if (!r) return unavailableRateLimitResult("roast_generation_network", "missing_redis_config");
-  if (!roastNetworkMinuteLimiter) {
-    roastNetworkMinuteLimiter = new Ratelimit({
-      redis: r,
-      limiter: Ratelimit.slidingWindow(48, "60 s"),
-      prefix: "rl:roast-network:m",
-      analytics: false,
-    });
-  }
-  if (!roastNetworkDayLimiter) {
-    roastNetworkDayLimiter = new Ratelimit({
-      redis: r,
-      limiter: Ratelimit.slidingWindow(480, "1 d"),
-      prefix: "rl:roast-network:d",
-      analytics: false,
-    });
-  }
+  const roastNetworkMinuteLimiter = rateLimiter("rl:roast-network:m", 48, "60 s");
+  const roastNetworkDayLimiter = rateLimiter("rl:roast-network:d", 480, "1 d");
+  if (!roastNetworkMinuteLimiter || !roastNetworkDayLimiter) return unavailableRateLimitResult("roast_generation_network", "missing_redis_config");
   try {
     const [minute, day] = await Promise.all([
       roastNetworkMinuteLimiter.limit(ip),
@@ -884,24 +822,9 @@ export async function waitForCachedVerdict(
 
 /** Per-IP limiter for the PK verdict LLM call (operator credit). Burst + daily. */
 export async function checkVerdictRateLimit(ip: string): Promise<RateLimitResult> {
-  const r = getRedis();
-  if (!r) return unavailableRateLimitResult("vs_verdict", "missing_redis_config");
-  if (!verdictMinuteLimiter) {
-    verdictMinuteLimiter = new Ratelimit({
-      redis: r,
-      limiter: Ratelimit.slidingWindow(6, "60 s"),
-      prefix: "rl:verdict:m",
-      analytics: false,
-    });
-  }
-  if (!verdictDayLimiter) {
-    verdictDayLimiter = new Ratelimit({
-      redis: r,
-      limiter: Ratelimit.slidingWindow(40, "1 d"),
-      prefix: "rl:verdict:d",
-      analytics: false,
-    });
-  }
+  const verdictMinuteLimiter = rateLimiter("rl:verdict:m", 6, "60 s");
+  const verdictDayLimiter = rateLimiter("rl:verdict:d", 40, "1 d");
+  if (!verdictMinuteLimiter || !verdictDayLimiter) return unavailableRateLimitResult("vs_verdict", "missing_redis_config");
   try {
     const [minute, day] = await Promise.all([
       verdictMinuteLimiter.limit(ip),

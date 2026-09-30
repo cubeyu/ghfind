@@ -1,0 +1,29 @@
+{
+  // ghfind-coord: Durable Objects replacing Upstash Redis coordination. Bound
+  // cross-script by ghfind (Next) and ghfind-api via `script_name`, so this
+  // Worker must be deployed (per env) before any Worker that binds it.
+  "name": "ghfind-coord",
+  "account_id": "8f19bebe359e4ec1a24c68c5f49c1584",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-08-06",
+  "observability": { "enabled": true },
+  "workers_dev": false,
+  "durable_objects": {
+    "bindings": [{ "name": "RATE_LIMITER", "class_name": "RateLimiter" }]
+  },
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["RateLimiter"] }],
+  "env": {
+    "dev": {
+      "name": "ghfind-coord-dev",
+      "durable_objects": {
+        "bindings": [{ "name": "RATE_LIMITER", "class_name": "RateLimiter" }]
+      }
+    },
+    "production": {
+      "name": "ghfind-coord",
+      "durable_objects": {
+        "bindings": [{ "name": "RATE_LIMITER", "class_name": "RateLimiter" }]
+      }
+    }
+  }
+}

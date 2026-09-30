@@ -37,7 +37,7 @@ export interface CacheStore {
 }
 
 // KV rejects expirationTtl below 60 seconds.
-export const KV_MIN_TTL_SECONDS = 60;
+const KV_MIN_TTL_SECONDS = 60;
 
 export function kvCacheStore(kv: KVNamespaceLike): CacheStore {
   return {
@@ -72,7 +72,7 @@ export function redisCacheStore(redis: RedisLike): CacheStore {
 }
 
 /** The GHFIND_CACHE binding when running on Cloudflare, else null. */
-export function getCacheKVBinding(): KVNamespaceLike | null {
+function getCacheKVBinding(): KVNamespaceLike | null {
   try {
     const env = getCloudflareContext().env as { GHFIND_CACHE?: KVNamespaceLike };
     return env.GHFIND_CACHE ?? null;
