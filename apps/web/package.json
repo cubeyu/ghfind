@@ -8,7 +8,7 @@
     "build": "astro build",
     "preview": "astro build && wrangler dev --port 8788",
     "typecheck": "astro check",
-    "deploy:dev": "astro build && wrangler deploy --env dev"
+    "deploy:dev": "CLOUDFLARE_ENV=dev astro build && wrangler deploy"
   },
   "dependencies": {
     "@astrojs/cloudflare": "^14.3.3",
