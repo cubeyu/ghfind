@@ -10,6 +10,7 @@
 
 import { protectedScan, ScanBusyError, scanTtl } from "./scan-protection";
 import { selectCacheStore, type CacheStore } from "./cache-store";
+import { selectAtomicStore, type AtomicStore } from "./atomic-store";
 import {
   durableObjectLimiter,
   getRateLimiterBinding,
@@ -123,6 +124,16 @@ function rateLimiter(prefix: string, tokens: number, window: LimitWindow): Limit
   }
   limiters.set(memoKey, limiter);
   return limiter;
+}
+
+/**
+ * Backend for single-key coordination state that needs read-your-writes:
+ * roast/verdict caches and their single-flight locks, the lookup gate, and
+ * campaign revisions. The KeyValue Durable Object (ghfind-coord) when the
+ * deployment sets GHFIND_COORD_BACKEND=do and binds COORD_KV; else Redis.
+ */
+function atomicStore(): AtomicStore | null {
+  return selectAtomicStore(getRedis());
 }
 
 /**
@@ -277,10 +288,10 @@ export async function tryAcquireLookupGate(
   key: string,
   windowSeconds: number,
 ): Promise<boolean> {
-  const r = getRedis();
+  const r = atomicStore();
   if (!r) return true;
   try {
-    return (await r.set(key, "1", { nx: true, ex: windowSeconds })) === "OK";
+    return await r.setIfAbsent(key, "1", windowSeconds);
   } catch {
     return true;
   }
@@ -289,7 +300,7 @@ export async function tryAcquireLookupGate(
 /** Release a lookup gate acquired by tryAcquireLookupGate, so a failed Turso
  *  write doesn't suppress the count for a whole window. Best-effort. */
 export async function releaseLookupGate(key: string): Promise<void> {
-  const r = getRedis();
+  const r = atomicStore();
   if (!r) return;
   await r.del(key).catch(() => {});
 }
@@ -577,7 +588,7 @@ export const roastKey = (username: string, lang: Lang) =>
 
 export async function getCachedRoast(username: string, lang: Lang): Promise<CachedRoast | null> {
   if (bypassGeneratedCaches()) return null;
-  const r = getRedis();
+  const r = atomicStore();
   if (!r) return null;
   try {
     return (await r.get<CachedRoast>(roastKey(username, lang))) ?? null;
@@ -592,10 +603,10 @@ export async function setCachedRoast(
   value: CachedRoast,
 ): Promise<void> {
   if (bypassGeneratedCaches()) return;
-  const r = getRedis();
+  const r = atomicStore();
   if (!r) return;
   try {
-    await r.set(roastKey(username, lang), value, { ex: ROAST_TTL_SECONDS });
+    await r.set(roastKey(username, lang), value, ROAST_TTL_SECONDS);
   } catch {
     // best-effort
   }
@@ -608,7 +619,7 @@ export async function setCachedRoast(
  */
 export async function clearCachedRoast(username: string, lang: Lang): Promise<void> {
   if (bypassGeneratedCaches()) return;
-  const r = getRedis();
+  const r = atomicStore();
   if (!r) return;
   try {
     await r.del(roastKey(username, lang));
@@ -627,7 +638,7 @@ export const roastJudgeKey = (username: string) =>
 
 export async function getCachedRoastJudge(username: string): Promise<CachedRoastJudge | null> {
   if (bypassGeneratedCaches()) return null;
-  const r = getRedis();
+  const r = atomicStore();
   if (!r) return null;
   try {
     return (await r.get<CachedRoastJudge>(roastJudgeKey(username))) ?? null;
@@ -641,10 +652,10 @@ export async function setCachedRoastJudge(
   value: CachedRoastJudge,
 ): Promise<void> {
   if (bypassGeneratedCaches()) return;
-  const r = getRedis();
+  const r = atomicStore();
   if (!r) return;
   try {
-    await r.set(roastJudgeKey(username), value, { ex: ROAST_TTL_SECONDS });
+    await r.set(roastJudgeKey(username), value, ROAST_TTL_SECONDS);
   } catch {
     // best-effort
   }
@@ -667,15 +678,10 @@ const roastLockKey = (username: string, lang: Lang) =>
  *  Without Redis there's no coordination, so everyone leads (behavior unchanged). */
 export async function acquireRoastLock(username: string, lang: Lang): Promise<boolean> {
   if (bypassGeneratedCaches()) return true;
-  const r = getRedis();
+  const r = atomicStore();
   if (!r) return true;
   try {
-    return (
-      (await r.set(roastLockKey(username, lang), "1", {
-        nx: true,
-        ex: ROAST_LOCK_TTL_SECONDS,
-      })) === "OK"
-    );
+    return await r.setIfAbsent(roastLockKey(username, lang), "1", ROAST_LOCK_TTL_SECONDS);
   } catch {
     return true; // Redis hiccup — don't block the roast.
   }
@@ -683,7 +689,7 @@ export async function acquireRoastLock(username: string, lang: Lang): Promise<bo
 
 export async function releaseRoastLock(username: string, lang: Lang): Promise<void> {
   if (bypassGeneratedCaches()) return;
-  const r = getRedis();
+  const r = atomicStore();
   if (!r) return;
   try {
     await r.del(roastLockKey(username, lang));
@@ -707,7 +713,7 @@ export async function waitForCachedRoast(
   timeoutMs = 120000,
 ): Promise<CachedRoast | null> {
   if (bypassGeneratedCaches()) return null;
-  const r = getRedis();
+  const r = atomicStore();
   if (!r) return null;
   const steps = Math.max(1, Math.floor(timeoutMs / 500));
   for (let i = 0; i < steps; i++) {
@@ -749,7 +755,7 @@ const verdictLockKey = (a: string, b: string) => `lock:verdict:${verdictPair(a, 
 
 export async function getCachedVerdict(a: string, b: string): Promise<CachedVerdict | null> {
   if (bypassGeneratedCaches()) return null;
-  const r = getRedis();
+  const r = atomicStore();
   if (!r) return null;
   try {
     return (await r.get<CachedVerdict>(verdictKey(a, b))) ?? null;
@@ -764,10 +770,10 @@ export async function setCachedVerdict(
   value: CachedVerdict,
 ): Promise<void> {
   if (bypassGeneratedCaches()) return;
-  const r = getRedis();
+  const r = atomicStore();
   if (!r) return;
   try {
-    await r.set(verdictKey(a, b), value, { ex: VERDICT_TTL_SECONDS });
+    await r.set(verdictKey(a, b), value, VERDICT_TTL_SECONDS);
   } catch {
     // best-effort
   }
@@ -775,15 +781,10 @@ export async function setCachedVerdict(
 
 export async function acquireVerdictLock(a: string, b: string): Promise<boolean> {
   if (bypassGeneratedCaches()) return true;
-  const r = getRedis();
+  const r = atomicStore();
   if (!r) return true;
   try {
-    return (
-      (await r.set(verdictLockKey(a, b), "1", {
-        nx: true,
-        ex: VERDICT_LOCK_TTL_SECONDS,
-      })) === "OK"
-    );
+    return await r.setIfAbsent(verdictLockKey(a, b), "1", VERDICT_LOCK_TTL_SECONDS);
   } catch {
     return true;
   }
@@ -791,7 +792,7 @@ export async function acquireVerdictLock(a: string, b: string): Promise<boolean>
 
 export async function releaseVerdictLock(a: string, b: string): Promise<void> {
   if (bypassGeneratedCaches()) return;
-  const r = getRedis();
+  const r = atomicStore();
   if (!r) return;
   try {
     await r.del(verdictLockKey(a, b));
@@ -807,7 +808,7 @@ export async function waitForCachedVerdict(
   timeoutMs = 45000,
 ): Promise<CachedVerdict | null> {
   if (bypassGeneratedCaches()) return null;
-  const r = getRedis();
+  const r = atomicStore();
   if (!r) return null;
   const steps = Math.max(1, Math.floor(timeoutMs / 500));
   for (let i = 0; i < steps; i++) {
@@ -906,7 +907,7 @@ const campaignLeaderboardRevisionKey = (campaign: string) =>
 
 /** Signal that a campaign board's persisted membership or score changed. */
 export async function bumpCampaignLeaderboardRevision(campaign: string): Promise<void> {
-  const r = getRedis();
+  const r = atomicStore();
   if (!r) {
     localCampaignLeaderboardRevisions.set(
       campaign,
@@ -915,9 +916,7 @@ export async function bumpCampaignLeaderboardRevision(campaign: string): Promise
     return;
   }
   try {
-    const key = campaignLeaderboardRevisionKey(campaign);
-    await r.incr(key);
-    await r.expire(key, CAMPAIGN_LEADERBOARD_REVISION_TTL_SECONDS);
+    await r.incr(campaignLeaderboardRevisionKey(campaign), CAMPAIGN_LEADERBOARD_REVISION_TTL_SECONDS);
   } catch {
     // Best-effort live signal. The client keeps its periodic refresh fallback.
   }
@@ -925,7 +924,7 @@ export async function bumpCampaignLeaderboardRevision(campaign: string): Promise
 
 /** Current cross-instance revision consumed by the campaign SSE endpoint. */
 export async function getCampaignLeaderboardRevision(campaign: string): Promise<number | null> {
-  const r = getRedis();
+  const r = atomicStore();
   if (!r) return localCampaignLeaderboardRevisions.get(campaign) ?? 0;
   try {
     return (await r.get<number>(campaignLeaderboardRevisionKey(campaign))) ?? 0;

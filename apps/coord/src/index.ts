@@ -5,6 +5,7 @@
  */
 import { gcNextCache, type GcBucket, type GcReport } from "./next-cache-gc";
 
+export { KeyValue } from "./key-value";
 export { RateLimiter } from "./rate-limiter";
 
 interface Env {

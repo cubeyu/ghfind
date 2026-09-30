@@ -42,7 +42,8 @@
       ],
       "durable_objects": {
         "bindings": [
-          { "name": "RATE_LIMITER", "class_name": "RateLimiter", "script_name": "ghfind-coord-dev" }
+          { "name": "RATE_LIMITER", "class_name": "RateLimiter", "script_name": "ghfind-coord-dev" },
+          { "name": "COORD_KV", "class_name": "KeyValue", "script_name": "ghfind-coord-dev" }
         ]
       },
       "vars": {
@@ -52,6 +53,7 @@
         "GHFIND_CACHE_BACKEND": "kv",
         // Rate limits on ghfind-coord-dev's RateLimiter Durable Object.
         "GHFIND_RATELIMIT_BACKEND": "do",
+        "GHFIND_COORD_BACKEND": "do",
         "PUBLIC_SITE_URL": "https://dev.ghfind.com",
         "NEXT_PUBLIC_SITE_URL": "https://dev.ghfind.com"
       }
