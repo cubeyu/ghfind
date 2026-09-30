@@ -1,7 +1,7 @@
 {
   // ghfind frontend + backend on one Cloudflare Worker via @opennextjs/cloudflare.
   // Top level = local `wrangler dev`. Deployments always use --env:
-  //   wrangler deploy --env dev         → dev.ghfind.com
+  //   wrangler deploy --env dev         → ghfind-dev (behind ghfind-router-dev on dev.ghfind.com)
   //   wrangler deploy --env production  → ghfind.com
   //   wrangler deploy --env preview --name ghfind-pr-<n> → per-PR preview
   //     (GitHub Actions deploy-cf-preview.yml; no custom routes, workers.dev only)
@@ -43,9 +43,10 @@
       // workers.dev stays on for dev: a WAF-free test entrance (the zone's ASN
       // challenge blocks curl-based smoke from proxy egress IPs).
       "workers_dev": true,
-      "routes": [
-        { "pattern": "dev.ghfind.com", "custom_domain": true }
-      ],
+      // No custom domain: dev.ghfind.com belongs to ghfind-router-dev
+      // (apps/router), which forwards unmigrated paths here over a service
+      // binding. Do NOT re-add the route — a non-interactive deploy would
+      // silently take the domain back from the router.
       "d1_databases": [
         { "binding": "GHFIND_D1", "database_name": "ghfind", "database_id": "60d45096-bfe7-4de1-8b85-c1b66a466b0d", "migrations_dir": "migrations" },
         { "binding": "GHFIND_FEED_D1", "database_name": "ghfind-feed-dev", "database_id": "bd305af9-2cab-4fe8-8c2f-324391cf105e", "migrations_dir": "migrations-feed" }
