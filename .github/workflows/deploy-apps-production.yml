@@ -87,8 +87,14 @@ jobs:
           set -euo pipefail
           base=https://ghfind-router.beiming1201.workers.dev
           check() { # path expected-origin
-            headers=$(curl -fsS -o /dev/null -D - --max-time 60 "$base$1")
-            echo "$headers" | tr -d '\r' | grep -qix "x-ghfind-origin: $2" || { echo "$1 not served by $2"; echo "$headers"; exit 1; }
+            # A first deploy's workers.dev hostname takes a short while to go
+            # live (404 until then), so retry before failing.
+            for attempt in 1 2 3 4 5 6; do
+              if headers=$(curl -fsS -o /dev/null -D - --max-time 60 "$base$1") &&
+                 echo "$headers" | tr -d '\r' | grep -qix "x-ghfind-origin: $2"; then return 0; fi
+              echo "attempt $attempt: $1 not yet served by $2"; sleep 15
+            done
+            echo "$1 not served by $2"; exit 1
           }
           check /api/stats api
           check /api/badge/torvalds api
