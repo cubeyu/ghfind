@@ -3,7 +3,8 @@
  * under src/app/api — the same handler code runs on both stacks until the Next
  * app is retired (P5). Every exported HTTP method is mounted (index.ts).
  *
- * Batches: 1 read-only JSON, 2 README/social images, 3 auth and account.
+ * Batches: 1 read-only JSON, 2 README/social images, 3 auth and account,
+ * 4 social (comments, reactions, follows) and resumes.
  */
 import * as accountToken from "@/app/api/account/tokens/[id]/route";
 import * as accountTokens from "@/app/api/account/tokens/route";
@@ -11,20 +12,29 @@ import * as authCallbackGithub from "@/app/api/auth/callback/github/route";
 import * as authGithub from "@/app/api/auth/github/route";
 import * as authSignout from "@/app/api/auth/signout/route";
 import * as badge from "@/app/api/badge/[username]/route";
+import * as blogComments from "@/app/api/blog-comments/[slug]/route";
 import * as campaignLeaderboard from "@/app/api/campaigns/[campaign]/leaderboard/route";
 import * as card from "@/app/api/card/[username]/route";
 import * as miniCard from "@/app/api/card/mini/[username]/route";
 import * as vsCard from "@/app/api/card/vs/[a]/[b]/route";
+import * as collectionComments from "@/app/api/collection-comments/[slug]/route";
 import * as developers from "@/app/api/developers/route";
 import * as facetRank from "@/app/api/facet-rank/[username]/route";
+import * as follow from "@/app/api/follows/[username]/route";
+import * as follows from "@/app/api/follows/route";
 import * as leaderboard from "@/app/api/leaderboard/route";
 import * as materialCard from "@/app/api/material-card/[username]/route";
 import * as me from "@/app/api/me/route";
 import * as ogBlog from "@/app/api/og/blog/[slug]/route";
 import * as ogHome from "@/app/api/og/home/route";
+import * as profileComments from "@/app/api/profile-comments/[username]/route";
+import * as profileReactions from "@/app/api/profile-reactions/[username]/route";
+import * as resumes from "@/app/api/resumes/route";
+import * as apiIndex from "@/app/api/route";
 import * as searchUsers from "@/app/api/search-users/route";
 import * as sponsors from "@/app/api/sponsors/route";
 import * as stats from "@/app/api/stats/route";
+import * as talentById from "@/app/api/talent/[id]/route";
 import * as talent from "@/app/api/talent/route";
 
 export interface ApiRoute {
@@ -59,4 +69,14 @@ export const API_ROUTES: ApiRoute[] = [
   { path: "/api/me", module: me },
   { path: "/api/account/tokens", module: accountTokens },
   { path: "/api/account/tokens/:id", module: accountToken },
+  // Batch 4: session-authenticated social features, resumes, talent detail.
+  { path: "/api", module: apiIndex },
+  { path: "/api/blog-comments/:slug", module: blogComments },
+  { path: "/api/collection-comments/:slug", module: collectionComments },
+  { path: "/api/profile-comments/:username", module: profileComments },
+  { path: "/api/profile-reactions/:username", module: profileReactions },
+  { path: "/api/follows", module: follows },
+  { path: "/api/follows/:username", module: follow },
+  { path: "/api/resumes", module: resumes },
+  { path: "/api/talent/:id", module: talentById },
 ];

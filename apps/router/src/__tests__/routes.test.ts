@@ -17,7 +17,7 @@ describe("pickTarget", () => {
     for (const p of ["/api/leaderboard", "/api/stats", "/api/search-users", "/api/developers", "/api/talent", "/api/sponsors", "/api/facet-rank/torvalds", "/api/campaigns/advx/leaderboard"]) {
       expect(pickTarget(p)).toBe("api");
     }
-    for (const p of ["/api/talent/123", "/api/campaigns/advx/leaderboard/events", "/api/leaderboard/x", "/api/facet-rank", "/api/score/torvalds", "/api/does-not-exist", "/en/api/stats"]) {
+    for (const p of ["/api/talent/123/x", "/api/campaigns/advx/leaderboard/events", "/api/leaderboard/x", "/api/facet-rank", "/api/score/torvalds", "/api/does-not-exist", "/en/api/stats"]) {
       expect(pickTarget(p)).toBe("legacy");
     }
   });
@@ -38,6 +38,15 @@ describe("pickTarget", () => {
       expect(pickTarget(p)).toBe("api");
     }
     for (const p of ["/api/auth", "/api/auth/gitlab", "/api/auth/callback/gitlab", "/api/me/x", "/api/account", "/api/account/tokens/a/b"]) {
+      expect(pickTarget(p)).toBe("legacy");
+    }
+  });
+
+  it("serves the social, resume and API index routes from api, by whole path only", () => {
+    for (const p of ["/api", "/api/blog-comments/who-builds-dify", "/api/collection-comments/x", "/api/profile-comments/torvalds", "/api/profile-reactions/torvalds", "/api/follows", "/api/follows/torvalds", "/api/resumes", "/api/talent/123"]) {
+      expect(pickTarget(p)).toBe("api");
+    }
+    for (const p of ["/api/", "/en/api", "/api/blog-comments", "/api/follows/a/b", "/api/resumes/1", "/api/profile-reactions"]) {
       expect(pickTarget(p)).toBe("legacy");
     }
   });
