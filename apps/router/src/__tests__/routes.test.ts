@@ -17,7 +17,7 @@ describe("pickTarget", () => {
     for (const p of ["/api/leaderboard", "/api/stats", "/api/search-users", "/api/developers", "/api/talent", "/api/sponsors", "/api/facet-rank/torvalds", "/api/campaigns/advx/leaderboard"]) {
       expect(pickTarget(p)).toBe("api");
     }
-    for (const p of ["/api/talent/123/x", "/api/campaigns/advx/leaderboard/events", "/api/leaderboard/x", "/api/facet-rank", "/api/score/torvalds", "/api/does-not-exist", "/en/api/stats"]) {
+    for (const p of ["/api/talent/123/x", "/api/campaigns/advx/leaderboard/events/x", "/api/leaderboard/x", "/api/facet-rank", "/api/does-not-exist", "/en/api/stats"]) {
       expect(pickTarget(p)).toBe("legacy");
     }
   });
@@ -51,8 +51,17 @@ describe("pickTarget", () => {
     }
   });
 
+  it("serves scoring, scans, LLM and job routes from api; Feed stays on legacy", () => {
+    for (const p of ["/api/score/torvalds", "/api/scan", "/api/roast", "/api/vs-verdict", "/api/project-analyses", "/api/project-analyses/abc", "/api/campaigns/advx/leaderboard/events", "/api/profile/backfill", "/api/admin/backfill-facets", "/api/admin/backfill-scores", "/api/internal/project-analyses/reconcile"]) {
+      expect(pickTarget(p)).toBe("api");
+    }
+    for (const p of ["/api/feed/projects", "/api/feed/events", "/api/internal/feed/reconcile", "/api/admin/backfill-other", "/api/scan/x", "/api/score", "/api/profile"]) {
+      expect(pickTarget(p)).toBe("legacy");
+    }
+  });
+
   it("keeps everything else on legacy", () => {
-    for (const p of ["/", "/en", "/about/team", "/aboutx", "/u/torvalds", "/api/score/x", "/_next/static/x.js", "/favicon.ico", "/mcp"]) {
+    for (const p of ["/", "/en", "/about/team", "/aboutx", "/u/torvalds", "/api/score/x/y", "/_next/static/x.js", "/favicon.ico", "/mcp"]) {
       expect(pickTarget(p)).toBe("legacy");
     }
   });

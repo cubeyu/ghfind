@@ -131,6 +131,37 @@ const CASES: Case[] = [
   { path: "/api/talent/ccch1mneyyy" },
   { path: "/api/talent/ccch1mneyyy?locale=zh" },
   { path: "/api/talent/zz-no-such-talent-0xd1ff" },
+  // Batch 5: only paths that fail before any GitHub/LLM work, scan admission
+  // or rate-limit token is spent (both bases share the dev rate limiter).
+  { path: "/api/score/torvalds" },
+  { path: "/api/score/bad%20name" },
+  { method: "POST", path: "/api/score/torvalds" },
+  { method: "POST", path: "/api/scan", body: "not json" },
+  { method: "POST", path: "/api/scan", body: '{"username":"bad name"}' },
+  { method: "POST", path: "/api/scan", body: '{"username":"torvalds","campaign":"no such campaign!"}' },
+  { method: "POST", path: "/api/scan", headers: { Authorization: "Bearer ghf_forged" }, body: '{"username":"torvalds"}' },
+  { path: "/api/scan" },
+  { method: "OPTIONS", path: "/api/scan" },
+  { method: "POST", path: "/api/roast", body: "not json" },
+  { method: "POST", path: "/api/roast", body: '{"username":"bad name"}' },
+  { method: "POST", path: "/api/roast", headers: { Authorization: "Bearer ghf_forged" }, body: '{"username":"torvalds"}' },
+  { method: "POST", path: "/api/vs-verdict", body: "not json" },
+  { method: "POST", path: "/api/vs-verdict", body: '{"a":"torvalds"}' },
+  { method: "POST", path: "/api/project-analyses", body: "not json" },
+  { method: "POST", path: "/api/project-analyses", body: "{}" },
+  { method: "POST", path: "/api/project-analyses", body: '{"repositoryUrl":"https://github.com/a/b","ref":7}' },
+  { path: "/api/project-analyses/00000000-0000-4000-8000-000000000000" },
+  { path: "/api/project-analyses/not-an-id" },
+  { path: "/api/campaigns/advx/leaderboard/events" },
+  { path: "/api/campaigns/nope/leaderboard/events" },
+  { method: "POST", path: "/api/profile/backfill", body: "not json" },
+  { method: "POST", path: "/api/profile/backfill", body: '{"username":"bad name"}' },
+  { method: "POST", path: "/api/admin/backfill-facets" },
+  { method: "POST", path: "/api/admin/backfill-profiles", headers: { "x-admin-secret": "forged" } },
+  { method: "POST", path: "/api/admin/backfill-repos" },
+  { method: "POST", path: "/api/admin/backfill-scores" },
+  { path: "/api/internal/project-analyses/reconcile" },
+  { method: "POST", path: "/api/internal/project-analyses/reconcile", headers: { Authorization: "Bearer forged" } },
 ];
 
 const HEADERS = ["content-type", "cache-control", "allow", "location", "www-authenticate", "link", "retry-after"];
@@ -200,7 +231,11 @@ async function snapshot(base: string, c: Case) {
   );
   if (cookies.length) headers["set-cookie"] = cookies.join(" | ");
   let body: unknown;
-  if ((headers["content-type"] ?? "").startsWith("image/png")) {
+  if ((headers["content-type"] ?? "").startsWith("text/event-stream")) {
+    // Long-lived SSE: the contract is the status and headers; don't wait on it.
+    await res.body?.cancel();
+    body = "(event stream)";
+  } else if ((headers["content-type"] ?? "").startsWith("image/png")) {
     const bytes = new Uint8Array(await res.arrayBuffer());
     const digest = await crypto.subtle.digest("SHA-256", bytes);
     body = { png: Buffer.from(digest).toString("hex"), bytes: bytes.length };

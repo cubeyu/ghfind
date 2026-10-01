@@ -3,7 +3,7 @@ import { Hono } from "hono";
 import * as apiNotFound from "@/app/api/[...notFound]/route";
 import { NextRequest } from "next/server";
 import { API_ROUTES } from "./routes";
-import { requestStore } from "./shims/next-headers";
+import { requestContext } from "./request-context";
 
 type Handler = (req: Request, ctx: { params: Promise<Record<string, string>> }) => Response | Promise<Response>;
 
@@ -43,10 +43,11 @@ for (const route of API_ROUTES) {
       return new Response(null, { status: 405 });
     }
     // Handlers get Next's own NextRequest (nextUrl, cookies) and, like Next,
-    // dynamic segments as `{ params: Promise<...> }`; next/headers reads the
-    // request from requestStore.
+    // dynamic segments as `{ params: Promise<...> }`; next/headers and `after`
+    // read the request context.
     const req = new NextRequest(c.req.raw);
-    const res = await requestStore.run(c.req.raw, () => handler(req, { params: Promise.resolve(c.req.param()) }));
+    const context = { request: c.req.raw, waitUntil: (p: Promise<unknown>) => c.executionCtx.waitUntil(p) };
+    const res = await requestContext.run(context, () => handler(req, { params: Promise.resolve(c.req.param()) }));
     // NextResponse.cookies mirrors every Set-Cookie into this internal header;
     // Next's send-response drops it on the way out, so do the same.
     if (res.headers.has("x-middleware-set-cookie")) {
