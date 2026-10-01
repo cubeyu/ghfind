@@ -13,7 +13,6 @@
  * proxy, so the function barely runs even on a popular profile.
  */
 
-import { NextRequest } from "next/server";
 import { TIER_LABEL_EN } from "@/lib/badge";
 import {
   parseMiniCardLang,
@@ -28,7 +27,7 @@ import { getGoProfilePresentation } from "@/lib/go-profile.server";
 import { tierFor } from "@/lib/score-presentation";
 import { getCurrentTitleSponsor } from "@/lib/sponsor.server";
 import { publicDisplayName, USERNAME_RE } from "@/lib/username";
-import { avatarDataUrl, CDN_CACHE } from "../../shared";
+import { avatarDataUrl, CDN_CACHE } from "../../assets";
 import { decodeRouteParam } from "@/lib/route-params";
 
 export const runtime = "nodejs";
@@ -53,11 +52,11 @@ function svg(body: string, cache: string): Response {
 }
 
 export async function GET(
-  req: NextRequest,
+  req: Request,
   ctx: { params: Promise<{ username: string }> },
 ) {
   const { username } = await ctx.params;
-  const params = req.nextUrl.searchParams;
+  const params = new URL(req.url).searchParams;
   const variant = parseMiniCardVariant(params.get("variant"));
   const theme = parseMiniCardTheme(params.get("theme"));
   const lang = parseMiniCardLang(params.get("lang"));

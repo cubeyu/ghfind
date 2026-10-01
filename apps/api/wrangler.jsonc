@@ -20,7 +20,12 @@
   // non-GET/HEAD are never cached. Inherited by every env below.
   "cache": { "enabled": true },
   "alias": {
-    "@opennextjs/cloudflare": "./src/shims/opennext-cloudflare.ts"
+    "@opennextjs/cloudflare": "./src/shims/opennext-cloudflare.ts",
+    "server-only": "./src/shims/server-only.ts",
+    // qrcode's "browser" field picks a canvas-based build, which has no canvas
+    // on Workers (toDataURL fails → cards lose their QR code). The Node entry
+    // renders PNGs with pure-JS pngjs over nodejs_compat's zlib/stream.
+    "qrcode": "../../node_modules/qrcode/lib/server.js"
   },
   "d1_databases": [
     { "binding": "GHFIND_D1", "database_name": "ghfind", "database_id": "60d45096-bfe7-4de1-8b85-c1b66a466b0d" },

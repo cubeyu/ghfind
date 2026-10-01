@@ -43,6 +43,20 @@ const CASES: Case[] = [
   { method: "OPTIONS", path: "/api/stats" },
   { method: "POST", path: "/api/stats" },
   { path: "/api/does-not-exist" },
+  // Batch 2a: README-embedded SVG images (compared as exact text).
+  { path: "/api/badge/torvalds" },
+  { path: "/api/badge/torvalds?lang=zh" },
+  { path: "/api/badge/zz-no-such-user-0xd1ff" },
+  { path: "/api/badge/bad%20name" },
+  { path: "/api/card/mini/torvalds" },
+  { path: "/api/card/mini/torvalds?theme=light&lang=zh" },
+  { path: "/api/card/mini/torvalds?variant=radar" },
+  { path: "/api/card/mini/torvalds?variant=strip&theme=auto" },
+  { path: "/api/card/mini/zz-no-such-user-0xd1ff" },
+  { path: "/api/material-card/torvalds" },
+  { path: "/api/material-card/torvalds?theme=light" },
+  { path: "/api/material-card/torvalds?preview=1" },
+  { path: "/api/material-card/zz-no-such-user-0xd1ff" },
 ];
 
 const HEADERS = ["content-type", "cache-control", "allow", "location", "www-authenticate", "link", "retry-after"];

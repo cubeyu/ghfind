@@ -21,7 +21,7 @@ const WEB_PAGES: readonly string[] = [
 const WEB_PREFIXES: readonly string[] = ["/_astro/"];
 
 /**
- * API routes served by the Hono Worker (P1 batch 1: read-only). Whole-path
+ * API routes served by the Hono Worker (P1 batches 1 and 2a). Whole-path
  * patterns, never prefixes: sibling routes such as /api/talent/:id and
  * /api/campaigns/:c/leaderboard/events are not migrated yet.
  */
@@ -34,6 +34,11 @@ const API_ROUTES: readonly RegExp[] = [
   /^\/api\/sponsors$/,
   /^\/api\/facet-rank\/[^/]+$/,
   /^\/api\/campaigns\/[^/]+\/leaderboard$/,
+  // Batch 2a: README-embedded SVG images. The PNG card /api/card/:username
+  // and /api/card/vs/* stay on legacy until their renderer moves.
+  /^\/api\/badge\/[^/]+$/,
+  /^\/api\/card\/mini\/[^/]+$/,
+  /^\/api\/material-card\/[^/]+$/,
 ];
 
 export function pickTarget(pathname: string): Target {

@@ -22,8 +22,17 @@ describe("pickTarget", () => {
     }
   });
 
+  it("serves the SVG image endpoints from api but keeps PNG cards on legacy", () => {
+    for (const p of ["/api/badge/torvalds", "/api/card/mini/torvalds", "/api/material-card/torvalds"]) {
+      expect(pickTarget(p)).toBe("api");
+    }
+    for (const p of ["/api/card/torvalds", "/api/card/vs/a/b", "/api/og/home", "/api/og/blog/x", "/api/card/mini", "/api/badge/a/b"]) {
+      expect(pickTarget(p)).toBe("legacy");
+    }
+  });
+
   it("keeps everything else on legacy", () => {
-    for (const p of ["/", "/en", "/about/team", "/aboutx", "/u/torvalds", "/api/badge/x", "/_next/static/x.js", "/favicon.ico", "/mcp"]) {
+    for (const p of ["/", "/en", "/about/team", "/aboutx", "/u/torvalds", "/api/card/x", "/_next/static/x.js", "/favicon.ico", "/mcp"]) {
       expect(pickTarget(p)).toBe("legacy");
     }
   });

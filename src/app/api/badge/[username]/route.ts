@@ -1,4 +1,3 @@
-import { NextRequest } from "next/server";
 import { getScoreBrief, getWeeklyBaselines, resolveWeeklyDelta } from "@/lib/db";
 import { buildBadge, type BadgeLang } from "@/lib/badge";
 import { USERNAME_RE } from "@/lib/username";
@@ -23,12 +22,12 @@ function svg(body: string, cache: string): Response {
 }
 
 export async function GET(
-  req: NextRequest,
+  req: Request,
   ctx: { params: Promise<{ username: string }> },
 ) {
   const { username } = await ctx.params;
   const lang: BadgeLang =
-    req.nextUrl.searchParams.get("lang") === "zh" ? "zh" : "en";
+    new URL(req.url).searchParams.get("lang") === "zh" ? "zh" : "en";
 
   const name = decodeRouteParam(username ?? "").trim();
   if (!USERNAME_RE.test(name)) {
