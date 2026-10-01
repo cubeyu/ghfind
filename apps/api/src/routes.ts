@@ -4,15 +4,21 @@
  * app is retired (P5). Every exported HTTP method is mounted (index.ts).
  *
  * Batches: 1 read-only JSON, 2 README/social images, 3 auth and account,
- * 4 social (comments, reactions, follows) and resumes.
+ * 4 social (comments, reactions, follows) and resumes, 5 scoring, scans,
+ * LLM roasts/verdicts, project analyses and admin/internal jobs.
  */
 import * as accountToken from "@/app/api/account/tokens/[id]/route";
 import * as accountTokens from "@/app/api/account/tokens/route";
+import * as adminBackfillFacets from "@/app/api/admin/backfill-facets/route";
+import * as adminBackfillProfiles from "@/app/api/admin/backfill-profiles/route";
+import * as adminBackfillRepos from "@/app/api/admin/backfill-repos/route";
+import * as adminBackfillScores from "@/app/api/admin/backfill-scores/route";
 import * as authCallbackGithub from "@/app/api/auth/callback/github/route";
 import * as authGithub from "@/app/api/auth/github/route";
 import * as authSignout from "@/app/api/auth/signout/route";
 import * as badge from "@/app/api/badge/[username]/route";
 import * as blogComments from "@/app/api/blog-comments/[slug]/route";
+import * as campaignEvents from "@/app/api/campaigns/[campaign]/leaderboard/events/route";
 import * as campaignLeaderboard from "@/app/api/campaigns/[campaign]/leaderboard/route";
 import * as card from "@/app/api/card/[username]/route";
 import * as miniCard from "@/app/api/card/mini/[username]/route";
@@ -22,6 +28,7 @@ import * as developers from "@/app/api/developers/route";
 import * as facetRank from "@/app/api/facet-rank/[username]/route";
 import * as follow from "@/app/api/follows/[username]/route";
 import * as follows from "@/app/api/follows/route";
+import * as internalProjectAnalysesReconcile from "@/app/api/internal/project-analyses/reconcile/route";
 import * as leaderboard from "@/app/api/leaderboard/route";
 import * as materialCard from "@/app/api/material-card/[username]/route";
 import * as me from "@/app/api/me/route";
@@ -29,13 +36,20 @@ import * as ogBlog from "@/app/api/og/blog/[slug]/route";
 import * as ogHome from "@/app/api/og/home/route";
 import * as profileComments from "@/app/api/profile-comments/[username]/route";
 import * as profileReactions from "@/app/api/profile-reactions/[username]/route";
+import * as profileBackfill from "@/app/api/profile/backfill/route";
+import * as projectAnalysis from "@/app/api/project-analyses/[id]/route";
+import * as projectAnalyses from "@/app/api/project-analyses/route";
 import * as resumes from "@/app/api/resumes/route";
+import * as roast from "@/app/api/roast/route";
 import * as apiIndex from "@/app/api/route";
+import * as scan from "@/app/api/scan/route";
+import * as score from "@/app/api/score/[username]/route";
 import * as searchUsers from "@/app/api/search-users/route";
 import * as sponsors from "@/app/api/sponsors/route";
 import * as stats from "@/app/api/stats/route";
 import * as talentById from "@/app/api/talent/[id]/route";
 import * as talent from "@/app/api/talent/route";
+import * as vsVerdict from "@/app/api/vs-verdict/route";
 
 export interface ApiRoute {
   /** Hono path pattern. */
@@ -79,4 +93,19 @@ export const API_ROUTES: ApiRoute[] = [
   { path: "/api/follows/:username", module: follow },
   { path: "/api/resumes", module: resumes },
   { path: "/api/talent/:id", module: talentById },
+  // Batch 5: scoring, scans, LLM roasts/verdicts, project analyses, campaign
+  // SSE, profile backfill, and the secret-gated admin/internal jobs.
+  { path: "/api/score/:username", module: score },
+  { path: "/api/scan", module: scan },
+  { path: "/api/roast", module: roast },
+  { path: "/api/vs-verdict", module: vsVerdict },
+  { path: "/api/project-analyses", module: projectAnalyses },
+  { path: "/api/project-analyses/:id", module: projectAnalysis },
+  { path: "/api/campaigns/:campaign/leaderboard/events", module: campaignEvents },
+  { path: "/api/profile/backfill", module: profileBackfill },
+  { path: "/api/admin/backfill-facets", module: adminBackfillFacets },
+  { path: "/api/admin/backfill-profiles", module: adminBackfillProfiles },
+  { path: "/api/admin/backfill-repos", module: adminBackfillRepos },
+  { path: "/api/admin/backfill-scores", module: adminBackfillScores },
+  { path: "/api/internal/project-analyses/reconcile", module: internalProjectAnalysesReconcile },
 ];

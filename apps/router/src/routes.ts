@@ -21,7 +21,7 @@ const WEB_PAGES: readonly string[] = [
 const WEB_PREFIXES: readonly string[] = ["/_astro/"];
 
 /**
- * API routes served by the Hono Worker (P1 batches 1–4). Whole-path
+ * API routes served by the Hono Worker (P1 batches 1–5). Whole-path
  * patterns, never prefixes: sibling routes such as /api/talent/:id and
  * /api/campaigns/:c/leaderboard/events are not migrated yet.
  */
@@ -60,6 +60,19 @@ const API_ROUTES: readonly RegExp[] = [
   /^\/api\/follows\/[^/]+$/,
   /^\/api\/resumes$/,
   /^\/api\/talent\/[^/]+$/,
+  // Batch 5: scoring, scans, LLM roasts/verdicts, project analyses, campaign
+  // SSE, profile backfill, admin/internal jobs. (Feed stays on legacy: its
+  // rollout is switched and verified on the legacy Worker by the release.)
+  /^\/api\/score\/[^/]+$/,
+  /^\/api\/scan$/,
+  /^\/api\/roast$/,
+  /^\/api\/vs-verdict$/,
+  /^\/api\/project-analyses$/,
+  /^\/api\/project-analyses\/[^/]+$/,
+  /^\/api\/campaigns\/[^/]+\/leaderboard\/events$/,
+  /^\/api\/profile\/backfill$/,
+  /^\/api\/admin\/backfill-(facets|profiles|repos|scores)$/,
+  /^\/api\/internal\/project-analyses\/reconcile$/,
 ];
 
 export function pickTarget(pathname: string): Target {
