@@ -66,8 +66,22 @@
         { "binding": "GHFIND_D1", "database_name": "ghfind", "database_id": "60d45096-bfe7-4de1-8b85-c1b66a466b0d" },
         { "binding": "GHFIND_FEED_D1", "database_name": "ghfind-feed", "database_id": "9c4ac13a-4c90-40a8-9d56-d7141f864bbf" }
       ],
+      // Upstash replacements (same as scripts/feed-production-release.mjs renderWeb).
+      "kv_namespaces": [
+        { "binding": "GHFIND_CACHE", "id": "f7a7299eef224d899c21121c1979be32" }
+      ],
+      "durable_objects": {
+        "bindings": [
+          { "name": "RATE_LIMITER", "class_name": "RateLimiter", "script_name": "ghfind-coord" },
+          { "name": "COORD_KV", "class_name": "KeyValue", "script_name": "ghfind-coord" },
+          { "name": "SCAN_SLOT", "class_name": "ScanSlot", "script_name": "ghfind-coord" }
+        ]
+      },
       "vars": {
         "GHFIND_DEPLOY_ENV": "production",
+        "GHFIND_CACHE_BACKEND": "kv",
+        "GHFIND_RATELIMIT_BACKEND": "do",
+        "GHFIND_COORD_BACKEND": "do",
         "PUBLIC_SITE_URL": "https://ghfind.com",
         "NEXT_PUBLIC_SITE_URL": "https://ghfind.com"
       }
