@@ -19,8 +19,17 @@
   // starts cold. Responses that are private/no-store, set cookies, or are
   // non-GET/HEAD are never cached. Inherited by every env below.
   "cache": { "enabled": true },
+  // Vendors Next's @vercel/og edge build for the PNG card routes
+  // (scripts/vendor-og.mjs); runs before every bundle, incl. dev and dry-run.
+  "build": { "command": "node scripts/vendor-og.mjs" },
+  // The vendored renderer imports its Geist base font as raw bytes.
+  "rules": [{ "type": "Data", "globs": ["**/*.ttf"], "fallthrough": true }],
   "alias": {
     "@opennextjs/cloudflare": "./src/shims/opennext-cloudflare.ts",
+    // PNG cards render with the exact renderer next/og uses (see the shim).
+    "next/og": "./src/shims/next-og.ts",
+    "next-intl/server": "./src/shims/next-intl-server.ts",
+    "vercel-og-edge": "./.generated/og/index.edge.js",
     "server-only": "./src/shims/server-only.ts",
     // qrcode's "browser" field picks a canvas-based build, which has no canvas
     // on Workers (toDataURL fails → cards lose their QR code). The Node entry

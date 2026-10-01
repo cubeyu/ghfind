@@ -138,9 +138,15 @@ importers:
 
   apps/api:
     dependencies:
+      '@ghfind/i18n':
+        specifier: workspace:*
+        version: link:../../packages/i18n
       hono:
         specifier: ^4.13.10
         version: 4.13.10
+      use-intl:
+        specifier: ^4.14.7
+        version: 4.14.7(@types/react@19.2.17)(react@19.2.4)
     devDependencies:
       '@cloudflare/workers-types':
         specifier: ^5.20260929.1

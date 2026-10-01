@@ -18,7 +18,14 @@ if (!baseA || !baseB) {
 }
 const sites = argv.find((a) => a.startsWith("--sites="))?.slice(8).split(",").map((s) => new URL(s).origin) ?? [];
 
-type Case = { method?: string; path: string };
+type Case = {
+  method?: string;
+  path: string;
+  /** Compare status/headers only: the body legitimately differs (see case). */
+  ignoreBody?: boolean;
+  /** Headers that legitimately differ for this case (see case). */
+  ignoreHeaders?: string[];
+};
 
 const CASES: Case[] = [
   { path: "/api/stats" },
@@ -57,6 +64,20 @@ const CASES: Case[] = [
   { path: "/api/material-card/torvalds?theme=light" },
   { path: "/api/material-card/torvalds?preview=1" },
   { path: "/api/material-card/zz-no-such-user-0xd1ff" },
+  // Batch 2b: PNG cards / OG images (compared as SHA-256 of the bytes).
+  { path: "/api/card/torvalds" },
+  { path: "/api/card/torvalds?theme=light" },
+  { path: "/api/card/torvalds?qr=0" },
+  { path: "/api/card/zz-no-such-user-0xd1ff" },
+  { path: "/api/card/vs/torvalds/gaearon" },
+  { path: "/api/card/vs/torvalds/gaearon?lang=zh&theme=light" },
+  { path: "/api/card/vs/torvalds/zz-no-such-user-0xd1ff" },
+  { path: "/api/og/blog/who-builds-dify" },
+  { path: "/api/og/blog/no-such-post-0xd1ff" },
+  // Next serves this force-static image from its build-time prerender: a
+  // runtime render matches it visually but differs in text anti-aliasing, and
+  // ISR replaces the route's Cache-Control with its own revalidate timer.
+  { path: "/api/og/home", ignoreBody: true, ignoreHeaders: ["cache-control"] },
 ];
 
 const HEADERS = ["content-type", "cache-control", "allow", "location", "www-authenticate", "link", "retry-after"];
@@ -109,13 +130,22 @@ async function snapshot(base: string, c: Case) {
   // content-type parameters (charset spacing/case) are not part of the contract.
   if (headers["content-type"]) headers["content-type"] = headers["content-type"].split(";")[0].trim().toLowerCase();
   if (headers.location) headers.location = new URL(headers.location, base).pathname + new URL(headers.location, base).search;
-  const text = await res.text();
-  let body: unknown = text;
-  try {
-    body = canonical(JSON.parse(text));
-  } catch {
-    // non-JSON bodies compare as text (empty for HEAD/OPTIONS/405)
+  let body: unknown;
+  if ((headers["content-type"] ?? "").startsWith("image/png")) {
+    const bytes = new Uint8Array(await res.arrayBuffer());
+    const digest = await crypto.subtle.digest("SHA-256", bytes);
+    body = { png: Buffer.from(digest).toString("hex"), bytes: bytes.length };
+  } else {
+    const text = await res.text();
+    body = text;
+    try {
+      body = canonical(JSON.parse(text));
+    } catch {
+      // non-JSON bodies compare as text (empty for HEAD/OPTIONS/405)
+    }
   }
+  if (c.ignoreBody) body = "(ignored)";
+  for (const h of c.ignoreHeaders ?? []) delete headers[h];
   return JSON.parse(normalize(JSON.stringify({ status: res.status, headers, body }), base));
 }
 

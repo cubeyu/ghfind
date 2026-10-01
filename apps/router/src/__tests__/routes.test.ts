@@ -22,17 +22,19 @@ describe("pickTarget", () => {
     }
   });
 
-  it("serves the SVG image endpoints from api but keeps PNG cards on legacy", () => {
-    for (const p of ["/api/badge/torvalds", "/api/card/mini/torvalds", "/api/material-card/torvalds"]) {
+  it("serves the image endpoints from api, by whole path only", () => {
+    for (const p of ["/api/badge/torvalds", "/api/card/mini/torvalds", "/api/material-card/torvalds", "/api/card/torvalds", "/api/card/vs/a/b", "/api/og/home", "/api/og/blog/x"]) {
       expect(pickTarget(p)).toBe("api");
     }
-    for (const p of ["/api/card/torvalds", "/api/card/vs/a/b", "/api/og/home", "/api/og/blog/x", "/api/card/mini", "/api/badge/a/b"]) {
+    // Like Next, a bare /api/card/mini is the card of a user named "mini".
+    expect(pickTarget("/api/card/mini")).toBe("api");
+    for (const p of ["/api/card/vs/a", "/api/card/vs/a/b/c", "/api/og", "/api/og/other", "/api/og/blog/x/y", "/api/badge/a/b"]) {
       expect(pickTarget(p)).toBe("legacy");
     }
   });
 
   it("keeps everything else on legacy", () => {
-    for (const p of ["/", "/en", "/about/team", "/aboutx", "/u/torvalds", "/api/card/x", "/_next/static/x.js", "/favicon.ico", "/mcp"]) {
+    for (const p of ["/", "/en", "/about/team", "/aboutx", "/u/torvalds", "/api/score/x", "/_next/static/x.js", "/favicon.ico", "/mcp"]) {
       expect(pickTarget(p)).toBe("legacy");
     }
   });

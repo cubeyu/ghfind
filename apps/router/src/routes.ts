@@ -34,11 +34,15 @@ const API_ROUTES: readonly RegExp[] = [
   /^\/api\/sponsors$/,
   /^\/api\/facet-rank\/[^/]+$/,
   /^\/api\/campaigns\/[^/]+\/leaderboard$/,
-  // Batch 2a: README-embedded SVG images. The PNG card /api/card/:username
-  // and /api/card/vs/* stay on legacy until their renderer moves.
+  // Batch 2: README-embedded / social images (SVG badges and cards, PNG
+  // cards and OG images rendered with the same @vercel/og as next/og).
   /^\/api\/badge\/[^/]+$/,
   /^\/api\/card\/mini\/[^/]+$/,
   /^\/api\/material-card\/[^/]+$/,
+  /^\/api\/card\/[^/]+$/,
+  /^\/api\/card\/vs\/[^/]+\/[^/]+$/,
+  /^\/api\/og\/home$/,
+  /^\/api\/og\/blog\/[^/]+$/,
 ];
 
 export function pickTarget(pathname: string): Target {
