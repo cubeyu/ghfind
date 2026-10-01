@@ -1,0 +1,78 @@
+name: Deploy apps (production)
+
+# Deploys the Astro-migration Workers (apps/*) from every successful main CI
+# run: ghfind-coord (Durable Objects other Workers bind to, so first),
+# ghfind-web, ghfind-api, then ghfind-router. Independent of the legacy/Feed
+# release (deploy-cf-production.yml): the router reaches the legacy Worker over
+# a service binding and keeps Feed there, so neither release blocks the other.
+#
+# The router only gets traffic once it owns the ghfind.com custom domain; until
+# then this verifies the stack on workers.dev without affecting users.
+
+on:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    if: >-
+      github.repository == 'hikariming/ghfind' &&
+      ((github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success') ||
+       (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main'))
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    concurrency:
+      group: apps-production-deploy
+      cancel-in-progress: false
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CF_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CF_ACCOUNT_ID }}
+      RELEASE_SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.RELEASE_SHA }}
+          persist-credentials: false
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - name: Reject superseded releases
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$RELEASE_SHA"
+          test "$(gh api repos/hikariming/ghfind/git/ref/heads/main --jq .object.sha)" = "$RELEASE_SHA"
+          test "$CLOUDFLARE_ACCOUNT_ID" = "8f19bebe359e4ec1a24c68c5f49c1584"
+      - run: pnpm install --frozen-lockfile
+      - name: Deploy ghfind-coord
+        run: pnpm --filter @ghfind/coord exec wrangler deploy --env production --tag "production-$RELEASE_SHA"
+      - name: Deploy ghfind-web
+        run: |
+          set -euo pipefail
+          CLOUDFLARE_ENV=production pnpm --filter @ghfind/web build
+          pnpm --filter @ghfind/web exec wrangler deploy --tag "production-$RELEASE_SHA"
+      - name: Deploy ghfind-api
+        run: pnpm --filter @ghfind/api exec wrangler deploy --env production --tag "production-$RELEASE_SHA"
+      - name: Deploy ghfind-router
+        run: pnpm --filter @ghfind/router exec wrangler deploy --env production --tag "production-$RELEASE_SHA"
+      - name: Smoke-test the router on workers.dev
+        run: |
+          set -euo pipefail
+          base=https://ghfind-router.beiming1201.workers.dev
+          check() { # path expected-origin
+            headers=$(curl -fsS -o /dev/null -D - --max-time 60 "$base$1")
+            echo "$headers" | tr -d '\r' | grep -qix "x-ghfind-origin: $2" || { echo "$1 not served by $2"; echo "$headers"; exit 1; }
+          }
+          check /api/stats api
+          check /api/badge/torvalds api
+          check /en/about web
+          check /en legacy

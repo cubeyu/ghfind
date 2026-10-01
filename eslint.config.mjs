@@ -43,6 +43,7 @@ const eslintConfig = defineConfig([
     "apps/*/dist/**",
     "apps/*/.astro/**",
     "apps/*/.wrangler/**",
+    "apps/*/.generated/**",
   ]),
 ]);
 

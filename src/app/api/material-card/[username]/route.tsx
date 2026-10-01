@@ -6,7 +6,7 @@ import { getCurrentTitleSponsor } from "@/lib/sponsor.server";
 import { tierAvatarFrame } from "@/lib/tier";
 import { tierAvatarFrameIconDataUrl } from "@/lib/tier-emoji.server";
 import { publicDisplayName, USERNAME_RE } from "@/lib/username";
-import { avatarDataUrl, CDN_CACHE, qrDataUrl, qrModuleColor } from "../../card/shared";
+import { avatarDataUrl, CDN_CACHE, qrDataUrl, qrModuleColor } from "../../card/assets";
 import { parseTheme } from "../../card/[username]/cards";
 import { decodeRouteParam } from "@/lib/route-params";
 
