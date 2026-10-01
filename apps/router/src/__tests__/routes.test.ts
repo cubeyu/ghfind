@@ -9,6 +9,16 @@ describe("pickTarget", () => {
     expect(pickTarget("/ar/about")).toBe("web");
   });
 
+  it("serves the P2 content pages from web in every locale, markdown twins and the rest from legacy", () => {
+    for (const p of ["/blog", "/en/blog", "/ja/blog/who-builds-dify", "/blog/who-builds-dify", "/collections", "/ar/collections", "/en/collections/bojie-li",
+      "/contact", "/en/privacy", "/ja/methodology", "/docs", "/ko/github-bot", "/sponsor"]) {
+      expect(pickTarget(p)).toBe("web");
+    }
+    for (const p of ["/blog/who-builds-dify.md", "/en/blog/x.md", "/blog/a/b", "/collections/a/b", "/blogs", "/en/collectionsx", "/docs/x", "/integrations", "/sponsor/x"]) {
+      expect(pickTarget(p)).toBe("legacy");
+    }
+  });
+
   it("serves Astro build assets from web", () => {
     expect(pickTarget("/_astro/index.abc123.js")).toBe("web");
   });
