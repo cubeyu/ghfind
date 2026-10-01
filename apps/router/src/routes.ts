@@ -21,7 +21,7 @@ const WEB_PAGES: readonly string[] = [
 const WEB_PREFIXES: readonly string[] = ["/_astro/"];
 
 /**
- * API routes served by the Hono Worker (P1 batches 1 and 2a). Whole-path
+ * API routes served by the Hono Worker (P1 batches 1–3). Whole-path
  * patterns, never prefixes: sibling routes such as /api/talent/:id and
  * /api/campaigns/:c/leaderboard/events are not migrated yet.
  */
@@ -43,6 +43,13 @@ const API_ROUTES: readonly RegExp[] = [
   /^\/api\/card\/vs\/[^/]+\/[^/]+$/,
   /^\/api\/og\/home$/,
   /^\/api\/og\/blog\/[^/]+$/,
+  // Batch 3: GitHub OAuth session cookies and account API tokens.
+  /^\/api\/auth\/github$/,
+  /^\/api\/auth\/callback\/github$/,
+  /^\/api\/auth\/signout$/,
+  /^\/api\/me$/,
+  /^\/api\/account\/tokens$/,
+  /^\/api\/account\/tokens\/[^/]+$/,
 ];
 
 export function pickTarget(pathname: string): Target {

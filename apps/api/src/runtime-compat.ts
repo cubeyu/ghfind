@@ -18,4 +18,10 @@ globalThis.Request = class extends OriginalRequest {
     if (init) delete init.cache;
     super(input, init);
   }
+  // Native requests (the incoming one, fetch results) must still pass
+  // `instanceof Request`: NextRequest branches on it and otherwise rebuilds
+  // the request from its URL alone, silently dropping headers and cookies.
+  static [Symbol.hasInstance](value: unknown): boolean {
+    return value instanceof OriginalRequest;
+  }
 } as typeof Request;

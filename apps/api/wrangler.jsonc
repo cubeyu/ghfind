@@ -31,6 +31,10 @@
     "next-intl/server": "./src/shims/next-intl-server.ts",
     "vercel-og-edge": "./.generated/og/index.edge.js",
     "server-only": "./src/shims/server-only.ts",
+    // Auth routes: Next's own NextRequest/NextResponse (cookie serialization
+    // parity) and a request-scoped cookies() for src/lib/auth.ts.
+    "next/server": "./src/shims/next-server.ts",
+    "next/headers": "./src/shims/next-headers.ts",
     // qrcode's "browser" field picks a canvas-based build, which has no canvas
     // on Workers (toDataURL fails → cards lose their QR code). The Node entry
     // renders PNGs with pure-JS pngjs over nodejs_compat's zlib/stream.

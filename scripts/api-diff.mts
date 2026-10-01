@@ -25,6 +25,9 @@ type Case = {
   ignoreBody?: boolean;
   /** Headers that legitimately differ for this case (see case). */
   ignoreHeaders?: string[];
+  /** Request headers; `{origin}` becomes the origin of the base under test. */
+  headers?: Record<string, string>;
+  body?: string;
 };
 
 const CASES: Case[] = [
@@ -78,6 +81,27 @@ const CASES: Case[] = [
   // runtime render matches it visually but differs in text anti-aliasing, and
   // ISR replaces the route's Cache-Control with its own revalidate timer.
   { path: "/api/og/home", ignoreBody: true, ignoreHeaders: ["cache-control"] },
+  // Batch 3: OAuth session cookies and account tokens. Set-Cookie compares
+  // name + attributes (values and Expires dates redacted); the OAuth `state`
+  // in redirects is random per request. Needs the same AUTH_* secrets on both.
+  { path: "/api/me" },
+  { path: "/api/me", headers: { Cookie: "ghfind_session=forged.signature" } },
+  { method: "HEAD", path: "/api/me" },
+  { path: "/api/auth/github?callbackUrl=/en/about" },
+  { path: "/api/auth/github?callbackUrl=https://evil.example/x" },
+  { path: "/api/auth/callback/github?state=nope&code=x" },
+  { path: "/api/auth/callback/github?state=nope&code=x", headers: { Cookie: "ghfind_oauth_state=forged.signature" } },
+  { method: "POST", path: "/api/auth/signout" },
+  { path: "/api/auth/signout" },
+  { method: "OPTIONS", path: "/api/auth/signout" },
+  { path: "/api/account/tokens" },
+  { path: "/api/account/tokens", headers: { Cookie: "ghfind_session=forged.signature" } },
+  { method: "POST", path: "/api/account/tokens", body: "{}" },
+  { method: "POST", path: "/api/account/tokens", headers: { Origin: "{origin}" }, body: "{}" },
+  { method: "OPTIONS", path: "/api/account/tokens" },
+  { method: "DELETE", path: "/api/account/tokens/00000000-0000-4000-8000-000000000000" },
+  { method: "DELETE", path: "/api/account/tokens/00000000-0000-4000-8000-000000000000", headers: { Origin: "{origin}" } },
+  { method: "OPTIONS", path: "/api/account/tokens/x" },
 ];
 
 const HEADERS = ["content-type", "cache-control", "allow", "location", "www-authenticate", "link", "retry-after"];
@@ -123,13 +147,29 @@ function canonical(value: unknown): unknown {
 }
 
 async function snapshot(base: string, c: Case) {
-  const res = await fetch(new URL(c.path, base), { method: c.method ?? "GET", redirect: "manual" });
+  const origin = new URL(base).origin;
+  const res = await fetch(new URL(c.path, base), {
+    method: c.method ?? "GET",
+    redirect: "manual",
+    headers: Object.fromEntries(Object.entries(c.headers ?? {}).map(([k, v]) => [k, v.replace("{origin}", origin)])),
+    body: c.body,
+  });
   const headers = Object.fromEntries(
     HEADERS.map((h) => [h, res.headers.get(h)]).filter(([, v]) => v !== null),
   ) as Record<string, string>;
   // content-type parameters (charset spacing/case) are not part of the contract.
   if (headers["content-type"]) headers["content-type"] = headers["content-type"].split(";")[0].trim().toLowerCase();
-  if (headers.location) headers.location = new URL(headers.location, base).pathname + new URL(headers.location, base).search;
+  if (headers.location) {
+    const loc = new URL(headers.location, base);
+    if (loc.searchParams.has("state")) loc.searchParams.set("state", "<random>");
+    headers.location = loc.origin === origin ? loc.pathname + loc.search : loc.href;
+  }
+  const cookies = res.headers.getSetCookie().map((cookie) =>
+    cookie
+      .replace(/^([^=]+)=[^;]+/, "$1=<value>")
+      .replace(/Expires=[^;]+/i, "Expires=<date>"),
+  );
+  if (cookies.length) headers["set-cookie"] = cookies.join(" | ");
   let body: unknown;
   if ((headers["content-type"] ?? "").startsWith("image/png")) {
     const bytes = new Uint8Array(await res.arrayBuffer());
