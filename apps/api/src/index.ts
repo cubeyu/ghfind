@@ -18,6 +18,9 @@ app.use(async (c, next) => {
   if (c.res.status === 404) {
     const res = new Response(c.res.body, c.res);
     res.headers.set("Cache-Control", NEXT_404_CACHE_CONTROL);
+    // Assigning over an existing c.res makes Hono copy the old headers onto
+    // the new response, restoring e.g. a handler's `no-store`; reset first.
+    c.res = undefined;
     c.res = res;
   }
 });

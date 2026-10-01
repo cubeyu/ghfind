@@ -21,7 +21,7 @@ const WEB_PAGES: readonly string[] = [
 const WEB_PREFIXES: readonly string[] = ["/_astro/"];
 
 /**
- * API routes served by the Hono Worker (P1 batches 1–3). Whole-path
+ * API routes served by the Hono Worker (P1 batches 1–4). Whole-path
  * patterns, never prefixes: sibling routes such as /api/talent/:id and
  * /api/campaigns/:c/leaderboard/events are not migrated yet.
  */
@@ -50,10 +50,20 @@ const API_ROUTES: readonly RegExp[] = [
   /^\/api\/me$/,
   /^\/api\/account\/tokens$/,
   /^\/api\/account\/tokens\/[^/]+$/,
+  // Batch 4: comments, reactions, follows, resumes, talent detail, API index.
+  /^\/api$/,
+  /^\/api\/blog-comments\/[^/]+$/,
+  /^\/api\/collection-comments\/[^/]+$/,
+  /^\/api\/profile-comments\/[^/]+$/,
+  /^\/api\/profile-reactions\/[^/]+$/,
+  /^\/api\/follows$/,
+  /^\/api\/follows\/[^/]+$/,
+  /^\/api\/resumes$/,
+  /^\/api\/talent\/[^/]+$/,
 ];
 
 export function pickTarget(pathname: string): Target {
-  if (pathname.startsWith("/api/")) {
+  if (pathname === "/api" || pathname.startsWith("/api/")) {
     return API_ROUTES.some((re) => re.test(pathname)) ? "api" : "legacy";
   }
   if (WEB_PREFIXES.some((prefix) => pathname.startsWith(prefix))) return "web";

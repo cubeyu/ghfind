@@ -102,6 +102,35 @@ const CASES: Case[] = [
   { method: "DELETE", path: "/api/account/tokens/00000000-0000-4000-8000-000000000000" },
   { method: "DELETE", path: "/api/account/tokens/00000000-0000-4000-8000-000000000000", headers: { Origin: "{origin}" } },
   { method: "OPTIONS", path: "/api/account/tokens/x" },
+  // Batch 4: comments, reactions, follows, resumes, talent detail, API index.
+  // Writes are compared unauthenticated/forged only (no live session here).
+  // force-static + revalidate: Next replaces the handler's Cache-Control with
+  // its ISR timer (s-maxage = time left until revalidation), like og/home.
+  { path: "/api", ignoreHeaders: ["cache-control"] },
+  { path: "/api/blog-comments/who-builds-dify" },
+  { path: "/api/blog-comments/no-such-post-0xd1ff" },
+  { method: "POST", path: "/api/blog-comments/who-builds-dify", body: "{}" },
+  { method: "POST", path: "/api/blog-comments/who-builds-dify", headers: { Origin: "{origin}", Cookie: "ghfind_session=forged.signature" }, body: "{}" },
+  { path: "/api/collection-comments/agents-heart-hands-body" },
+  { path: "/api/collection-comments/no-such-collection-0xd1ff" },
+  { method: "POST", path: "/api/collection-comments/agents-heart-hands-body", body: "{}" },
+  { path: "/api/profile-comments/torvalds" },
+  { path: "/api/profile-comments/bad%20name" },
+  { method: "POST", path: "/api/profile-comments/torvalds", body: "{}" },
+  { path: "/api/profile-reactions/torvalds" },
+  { path: "/api/profile-reactions/torvalds", headers: { Cookie: "ghfind_session=forged.signature" } },
+  { method: "PUT", path: "/api/profile-reactions/torvalds", body: "{}" },
+  { method: "DELETE", path: "/api/profile-reactions/torvalds" },
+  { method: "OPTIONS", path: "/api/profile-reactions/torvalds" },
+  { path: "/api/follows" },
+  { path: "/api/follows/torvalds" },
+  { method: "PUT", path: "/api/follows/torvalds" },
+  { method: "DELETE", path: "/api/follows/torvalds", headers: { Origin: "{origin}" } },
+  { path: "/api/resumes" },
+  { method: "PUT", path: "/api/resumes", body: "{}" },
+  { path: "/api/talent/ccch1mneyyy" },
+  { path: "/api/talent/ccch1mneyyy?locale=zh" },
+  { path: "/api/talent/zz-no-such-talent-0xd1ff" },
 ];
 
 const HEADERS = ["content-type", "cache-control", "allow", "location", "www-authenticate", "link", "retry-after"];
