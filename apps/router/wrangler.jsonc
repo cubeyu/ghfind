@@ -3,7 +3,8 @@
   // forwards each path to ghfind-web (Astro) or the legacy Next Worker over
   // service bindings; the route table lives in src/routes.ts.
   //
-  // Cutover (manual, one env at a time, dev first — dev done in P0):
+  // Cutover (one env at a time; dev done in P0, production via
+  // deploy-apps-production.yml once this env declares the domain):
   //   1. wrangler deploy --env <env>          (verify on the workers.dev URL)
   //   2. move the custom domain: remove it from the legacy Worker's wrangler
   //      env and add it here, then deploy the router. Non-interactive wrangler
@@ -33,6 +34,12 @@
     "production": {
       "name": "ghfind-router",
       "workers_dev": true,
+      // Owns the hostname; the legacy release (renderWeb) and the root
+      // wrangler.jsonc no longer declare it. Non-interactive deploys move an
+      // existing custom domain to this Worker without a gap.
+      "routes": [
+        { "pattern": "ghfind.com", "custom_domain": true }
+      ],
       "services": [
         { "binding": "WEB", "service": "ghfind-web" },
         { "binding": "API", "service": "ghfind-api" },

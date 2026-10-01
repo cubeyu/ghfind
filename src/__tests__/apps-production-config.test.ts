@@ -36,6 +36,14 @@ describe("production api Worker configuration", () => {
     expect(api.durable_objects.bindings).toEqual(legacy.durable_objects.bindings);
   });
 
+  it("gives the ghfind.com custom domain to the router only", () => {
+    const router = wranglerEnv("apps/router/wrangler.jsonc", "production");
+    expect(router.routes).toEqual([{ pattern: "ghfind.com", custom_domain: true }]);
+    expect("routes" in legacy).toBe(false);
+    expect(wranglerEnv("wrangler.jsonc", "production").routes).toBeUndefined();
+    expect(api.routes).toBeUndefined();
+  });
+
   it("does not take the Feed runtime binding (Feed stays on legacy)", () => {
     expect(api.services ?? []).toEqual([]);
   });
