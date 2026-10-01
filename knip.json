@@ -23,10 +23,12 @@
     },
     "apps/api": {
       "entry": [
-        "src/shims/*.ts"
+        "src/shims/*.ts",
+        "scripts/*.mjs"
       ],
       "ignoreDependencies": [
-        "cloudflare"
+        "cloudflare",
+        "vercel-og-edge"
       ]
     },
     "apps/coord": {

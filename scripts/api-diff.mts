@@ -18,7 +18,17 @@ if (!baseA || !baseB) {
 }
 const sites = argv.find((a) => a.startsWith("--sites="))?.slice(8).split(",").map((s) => new URL(s).origin) ?? [];
 
-type Case = { method?: string; path: string };
+type Case = {
+  method?: string;
+  path: string;
+  /** Compare status/headers only: the body legitimately differs (see case). */
+  ignoreBody?: boolean;
+  /** Headers that legitimately differ for this case (see case). */
+  ignoreHeaders?: string[];
+  /** Request headers; `{origin}` becomes the origin of the base under test. */
+  headers?: Record<string, string>;
+  body?: string;
+};
 
 const CASES: Case[] = [
   { path: "/api/stats" },
@@ -43,6 +53,55 @@ const CASES: Case[] = [
   { method: "OPTIONS", path: "/api/stats" },
   { method: "POST", path: "/api/stats" },
   { path: "/api/does-not-exist" },
+  // Batch 2a: README-embedded SVG images (compared as exact text).
+  { path: "/api/badge/torvalds" },
+  { path: "/api/badge/torvalds?lang=zh" },
+  { path: "/api/badge/zz-no-such-user-0xd1ff" },
+  { path: "/api/badge/bad%20name" },
+  { path: "/api/card/mini/torvalds" },
+  { path: "/api/card/mini/torvalds?theme=light&lang=zh" },
+  { path: "/api/card/mini/torvalds?variant=radar" },
+  { path: "/api/card/mini/torvalds?variant=strip&theme=auto" },
+  { path: "/api/card/mini/zz-no-such-user-0xd1ff" },
+  { path: "/api/material-card/torvalds" },
+  { path: "/api/material-card/torvalds?theme=light" },
+  { path: "/api/material-card/torvalds?preview=1" },
+  { path: "/api/material-card/zz-no-such-user-0xd1ff" },
+  // Batch 2b: PNG cards / OG images (compared as SHA-256 of the bytes).
+  { path: "/api/card/torvalds" },
+  { path: "/api/card/torvalds?theme=light" },
+  { path: "/api/card/torvalds?qr=0" },
+  { path: "/api/card/zz-no-such-user-0xd1ff" },
+  { path: "/api/card/vs/torvalds/gaearon" },
+  { path: "/api/card/vs/torvalds/gaearon?lang=zh&theme=light" },
+  { path: "/api/card/vs/torvalds/zz-no-such-user-0xd1ff" },
+  { path: "/api/og/blog/who-builds-dify" },
+  { path: "/api/og/blog/no-such-post-0xd1ff" },
+  // Next serves this force-static image from its build-time prerender: a
+  // runtime render matches it visually but differs in text anti-aliasing, and
+  // ISR replaces the route's Cache-Control with its own revalidate timer.
+  { path: "/api/og/home", ignoreBody: true, ignoreHeaders: ["cache-control"] },
+  // Batch 3: OAuth session cookies and account tokens. Set-Cookie compares
+  // name + attributes (values and Expires dates redacted); the OAuth `state`
+  // in redirects is random per request. Needs the same AUTH_* secrets on both.
+  { path: "/api/me" },
+  { path: "/api/me", headers: { Cookie: "ghfind_session=forged.signature" } },
+  { method: "HEAD", path: "/api/me" },
+  { path: "/api/auth/github?callbackUrl=/en/about" },
+  { path: "/api/auth/github?callbackUrl=https://evil.example/x" },
+  { path: "/api/auth/callback/github?state=nope&code=x" },
+  { path: "/api/auth/callback/github?state=nope&code=x", headers: { Cookie: "ghfind_oauth_state=forged.signature" } },
+  { method: "POST", path: "/api/auth/signout" },
+  { path: "/api/auth/signout" },
+  { method: "OPTIONS", path: "/api/auth/signout" },
+  { path: "/api/account/tokens" },
+  { path: "/api/account/tokens", headers: { Cookie: "ghfind_session=forged.signature" } },
+  { method: "POST", path: "/api/account/tokens", body: "{}" },
+  { method: "POST", path: "/api/account/tokens", headers: { Origin: "{origin}" }, body: "{}" },
+  { method: "OPTIONS", path: "/api/account/tokens" },
+  { method: "DELETE", path: "/api/account/tokens/00000000-0000-4000-8000-000000000000" },
+  { method: "DELETE", path: "/api/account/tokens/00000000-0000-4000-8000-000000000000", headers: { Origin: "{origin}" } },
+  { method: "OPTIONS", path: "/api/account/tokens/x" },
 ];
 
 const HEADERS = ["content-type", "cache-control", "allow", "location", "www-authenticate", "link", "retry-after"];
@@ -88,20 +147,45 @@ function canonical(value: unknown): unknown {
 }
 
 async function snapshot(base: string, c: Case) {
-  const res = await fetch(new URL(c.path, base), { method: c.method ?? "GET", redirect: "manual" });
+  const origin = new URL(base).origin;
+  const res = await fetch(new URL(c.path, base), {
+    method: c.method ?? "GET",
+    redirect: "manual",
+    headers: Object.fromEntries(Object.entries(c.headers ?? {}).map(([k, v]) => [k, v.replace("{origin}", origin)])),
+    body: c.body,
+  });
   const headers = Object.fromEntries(
     HEADERS.map((h) => [h, res.headers.get(h)]).filter(([, v]) => v !== null),
   ) as Record<string, string>;
   // content-type parameters (charset spacing/case) are not part of the contract.
   if (headers["content-type"]) headers["content-type"] = headers["content-type"].split(";")[0].trim().toLowerCase();
-  if (headers.location) headers.location = new URL(headers.location, base).pathname + new URL(headers.location, base).search;
-  const text = await res.text();
-  let body: unknown = text;
-  try {
-    body = canonical(JSON.parse(text));
-  } catch {
-    // non-JSON bodies compare as text (empty for HEAD/OPTIONS/405)
+  if (headers.location) {
+    const loc = new URL(headers.location, base);
+    if (loc.searchParams.has("state")) loc.searchParams.set("state", "<random>");
+    headers.location = loc.origin === origin ? loc.pathname + loc.search : loc.href;
   }
+  const cookies = res.headers.getSetCookie().map((cookie) =>
+    cookie
+      .replace(/^([^=]+)=[^;]+/, "$1=<value>")
+      .replace(/Expires=[^;]+/i, "Expires=<date>"),
+  );
+  if (cookies.length) headers["set-cookie"] = cookies.join(" | ");
+  let body: unknown;
+  if ((headers["content-type"] ?? "").startsWith("image/png")) {
+    const bytes = new Uint8Array(await res.arrayBuffer());
+    const digest = await crypto.subtle.digest("SHA-256", bytes);
+    body = { png: Buffer.from(digest).toString("hex"), bytes: bytes.length };
+  } else {
+    const text = await res.text();
+    body = text;
+    try {
+      body = canonical(JSON.parse(text));
+    } catch {
+      // non-JSON bodies compare as text (empty for HEAD/OPTIONS/405)
+    }
+  }
+  if (c.ignoreBody) body = "(ignored)";
+  for (const h of c.ignoreHeaders ?? []) delete headers[h];
   return JSON.parse(normalize(JSON.stringify({ status: res.status, headers, body }), base));
 }
 
