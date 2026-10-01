@@ -101,7 +101,21 @@
         "GHFIND_RATELIMIT_BACKEND": "do",
         "GHFIND_COORD_BACKEND": "do",
         "PUBLIC_SITE_URL": "https://ghfind.com",
-        "NEXT_PUBLIC_SITE_URL": "https://ghfind.com"
+        "NEXT_PUBLIC_SITE_URL": "https://ghfind.com",
+        // Project analyses (served here) finalize through the Feed source
+        // outbox in production; without these they would take the legacy
+        // catalog writer that the Feed writer fence rejects. Feed's own routes
+        // stay on the legacy Worker, whose rollout the release controls.
+        // Pinned to scripts/feed-production-release.mjs renderWeb by
+        // src/__tests__/apps-production-config.test.ts.
+        "FEED_BACKEND": "go",
+        "FEED_SOURCE_OUTBOX_ENABLED": "true",
+        // Same values as the GitHub "Production" environment variables that
+        // the release passes to renderWeb.
+        "MOSOO_API_BASE": "https://cloud.mosoo.ai/api/v1",
+        "MOSOO_PROJECT_AGENT_ID": "01M22PWZR0A7ZYCDKWTEA0YEHQ",
+        "MOSOO_PROJECT_USER_ID": "ghfind-production",
+        "MOSOO_PROJECT_REQUEST_TIMEOUT_MS": "15000"
       }
     }
   }
