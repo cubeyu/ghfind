@@ -15,9 +15,17 @@ export default {
     const upstream = target === "web" ? env.WEB : target === "api" ? env.API : env.LEGACY;
     // Service bindings keep the original URL/host, so both apps see the
     // public origin exactly as they did behind the custom domain.
-    const res = await upstream.fetch(request);
+    // Web can't render legacy's localized not-found page: an unknown slug on a
+    // migrated dynamic route comes back marked for fallback (body-less, so the
+    // request is replayed unchanged).
+    let served = target;
+    let res = await upstream.fetch(target === "web" ? request.clone() : request);
+    if (target === "web" && res.status === 404 && res.headers.get("X-Ghfind-Fallback") === "legacy") {
+      served = "legacy";
+      res = await env.LEGACY.fetch(request);
+    }
     const out = new Response(res.body, res);
-    out.headers.set("X-Ghfind-Origin", target);
+    out.headers.set("X-Ghfind-Origin", served);
     return out;
   },
 } satisfies ExportedHandler<Env>;

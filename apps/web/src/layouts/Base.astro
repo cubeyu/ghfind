@@ -14,17 +14,44 @@ import { getTranslator } from "../lib/i18n";
 import Shell from "../components/Shell.astro";
 import JsonLd from "../components/JsonLd.astro";
 
+/**
+ * Per-page overrides, with Next's metadata semantics: a page that sets
+ * `openGraph`/`twitter` replaces the layout defaults wholesale (no merge).
+ * Paths may be relative; they resolve against SITE_URL like Next's metadataBase.
+ */
+interface OpenGraph {
+  title: string;
+  description: string;
+  url: string;
+  type: "article";
+  publishedTime?: string;
+  modifiedTime?: string;
+  images?: { url: string; width?: number; height?: number }[];
+}
+interface Twitter {
+  card: "summary_large_image";
+  title: string;
+  description: string;
+  images?: string[];
+}
+
 interface Props {
   locale: Locale;
   /** Locale-agnostic path of this page, e.g. `/about`. */
   path: string;
   title: string;
   description: string;
+  /** Defaults to localeAlternates(locale, path). */
+  alternates?: { canonical: string; languages: Record<string, string> };
+  /** `<link rel="alternate" type="text/markdown">` twin of this page. */
+  markdownAlternate?: string;
+  openGraph?: OpenGraph;
+  twitter?: Twitter;
 }
 
-const { locale, path, title, description } = Astro.props;
+const { locale, path, title, description, markdownAlternate, openGraph, twitter } = Astro.props;
 const t = await getTranslator(locale, "meta");
-const alternates = localeAlternates(locale, path);
+const alternates = Astro.props.alternates ?? localeAlternates(locale, path);
 // Next's metadata resolver renders the root as the bare origin (no trailing
 // slash); match it so canonical/og:url stay byte-identical across stacks.
 const abs = (p: string) => (p === "/" ? new URL(SITE_URL).origin : new URL(p, SITE_URL).href);
@@ -43,30 +70,57 @@ const GA_MEASUREMENT_ID = import.meta.env.PUBLIC_GA_MEASUREMENT_ID ?? "G-GHXRYBF
     {Object.entries(alternates.languages).map(([lang, href]) => (
       <link rel="alternate" hreflang={lang} href={abs(href)} />
     ))}
-    {/* OG/Twitter mirror the Next layout defaults, which pages don't override. */}
-    <meta property="og:title" content={t("ogTitle")} />
-    <meta property="og:description" content={t("ogDescription")} />
-    <meta property="og:url" content={abs(localePath(locale, "/"))} />
-    <meta property="og:site_name" content={t("siteName")} />
-    <meta property="og:image" content={ogImage} />
-    <meta property="og:image:width" content="1200" />
-    <meta property="og:image:height" content="630" />
-    <meta property="og:image:alt" content={t("siteName")} />
-    <meta property="og:type" content="website" />
-    <meta name="twitter:card" content="summary_large_image" />
-    <meta name="twitter:title" content={t("title")} />
-    <meta name="twitter:description" content={t("twDescription")} />
-    <meta name="twitter:image" content={ogImage} />
+    {markdownAlternate && <link rel="alternate" type="text/markdown" href={abs(markdownAlternate)} />}
+    {openGraph ? (
+      <>
+        <meta property="og:title" content={openGraph.title} />
+        <meta property="og:description" content={openGraph.description} />
+        <meta property="og:url" content={abs(openGraph.url)} />
+        {openGraph.images?.map((image) => (
+          <>
+            <meta property="og:image" content={abs(image.url)} />
+            {image.width && <meta property="og:image:width" content={String(image.width)} />}
+            {image.height && <meta property="og:image:height" content={String(image.height)} />}
+          </>
+        ))}
+        <meta property="og:type" content={openGraph.type} />
+        {openGraph.publishedTime && <meta property="article:published_time" content={openGraph.publishedTime} />}
+        {openGraph.modifiedTime && <meta property="article:modified_time" content={openGraph.modifiedTime} />}
+      </>
+    ) : (
+      <>
+        {/* The Next layout defaults, for pages that don't override them. */}
+        <meta property="og:title" content={t("ogTitle")} />
+        <meta property="og:description" content={t("ogDescription")} />
+        <meta property="og:url" content={abs(localePath(locale, "/"))} />
+        <meta property="og:site_name" content={t("siteName")} />
+        <meta property="og:image" content={ogImage} />
+        <meta property="og:image:width" content="1200" />
+        <meta property="og:image:height" content="630" />
+        <meta property="og:image:alt" content={t("siteName")} />
+        <meta property="og:type" content="website" />
+      </>
+    )}
+    {twitter ? (
+      <>
+        <meta name="twitter:card" content={twitter.card} />
+        <meta name="twitter:title" content={twitter.title} />
+        <meta name="twitter:description" content={twitter.description} />
+        {twitter.images?.map((image) => <meta name="twitter:image" content={abs(image)} />)}
+      </>
+    ) : (
+      <>
+        <meta name="twitter:card" content="summary_large_image" />
+        <meta name="twitter:title" content={t("title")} />
+        <meta name="twitter:description" content={t("twDescription")} />
+        <meta name="twitter:image" content={ogImage} />
+      </>
+    )}
     <link rel="icon" href="/favicon.ico" sizes="32x32" type="image/x-icon" />
     <link rel="icon" href="/icon.svg" sizes="any" type="image/svg+xml" />
-    {/* Body text is the self-hosted DM Sans (@font-face in globals.css,
-        served from /fonts). globals.css builds --font-sans/--font-mono on the
-        --font-geist-* variables that next/font defines in the Next app; an
-        undefined var would invalidate the whole font-family, so define them.
-        TODO(P2): self-host Geist Mono before docs/blog (code blocks) move. */}
-    <style is:global>
-      :root { --font-geist-sans: system-ui; --font-geist-mono: ui-monospace, SFMono-Regular, Menlo, monospace; }
-    </style>
+    {/* Fonts: DM Sans comes from globals.css (/fonts); Geist and Geist Mono
+        are self-hosted in styles/global.css, defining the --font-geist-*
+        variables next/font provides in the Next app. */}
   </head>
   <body class="min-h-full flex flex-col">
     <JsonLd data={websiteJsonLd({ name: t("siteName"), description: t("description") })} />
