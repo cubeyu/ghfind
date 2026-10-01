@@ -84,9 +84,9 @@
       // workers.dev is a WAF-free verification entrance (zone rules only apply
       // to the custom domain); disable it once the parallel-run window closes.
       "workers_dev": true,
-      "routes": [
-        { "pattern": "ghfind.com", "custom_domain": true }
-      ],
+      // No route: ghfind-router owns the ghfind.com custom domain and reaches
+      // this Worker over a service binding (apps/router/wrangler.jsonc).
+      // Declaring the domain here would move it back on the next deploy.
       "d1_databases": [
         { "binding": "GHFIND_D1", "database_name": "ghfind", "database_id": "60d45096-bfe7-4de1-8b85-c1b66a466b0d", "migrations_dir": "migrations" },
         { "binding": "GHFIND_FEED_D1", "database_name": "ghfind-feed", "database_id": "9c4ac13a-4c90-40a8-9d56-d7141f864bbf", "migrations_dir": "migrations-feed" }

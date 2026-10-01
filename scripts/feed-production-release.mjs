@@ -24,7 +24,11 @@ export function renderWeb(sha, mode, provider) {
   requireThat(provider.MOSOO_API_BASE === 'https://cloud.mosoo.ai/api/v1' && /^[A-Z0-9]{26}$/.test(provider.MOSOO_PROJECT_AGENT_ID ?? '') && /^[A-Za-z0-9._:-]{1,128}$/.test(provider.MOSOO_PROJECT_USER_ID ?? ''), 'explicit published Mosoo provider required');
   return {
     name: 'ghfind', account_id: ACCOUNT, main: '../../.open-next/worker.js', compatibility_date: '2026-08-06', compatibility_flags: ['nodejs_compat'],
-    workers_dev: true, preview_urls: false, routes: [{ pattern: 'ghfind.com', custom_domain: true }],
+    // No routes: ghfind-router owns the ghfind.com custom domain and forwards
+    // to this Worker over a service binding. wrangler only touches custom
+    // domains a config declares, so omitting it leaves the router's binding
+    // alone; declaring it would move the domain back to this Worker.
+    workers_dev: true, preview_urls: false,
     assets: { directory: '../../.open-next/assets', binding: 'ASSETS' }, observability: { enabled: true },
     d1_databases: [['GHFIND_D1',production.coreDatabase,'../../migrations'],['GHFIND_FEED_D1',production.feedDatabase,'../../migrations-feed']].map(([binding,d,migrations_dir])=>({binding,database_name:d.name,database_id:d.id,migrations_dir})),
     r2_buckets: [{ binding: 'NEXT_INC_CACHE_R2_BUCKET', bucket_name: 'ghfind-next-cache' }],
