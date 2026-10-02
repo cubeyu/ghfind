@@ -9,7 +9,6 @@ import "server-only";
 import {
   getAccountDetail,
   getCurrentCanonicalQuickScan,
-  getFacetRank,
   getMatchup,
   getProfileSnapshot,
   getSimilarAccounts,
@@ -21,6 +20,7 @@ import {
   type AccountDetail as DbAccountDetail,
   type ProjectListItem,
 } from "@/lib/db";
+import { getFacetRankCached } from "@/lib/developers";
 import { getPercentileCached, getRankCached } from "@/lib/rank";
 import { getDeveloperCommonProjectsCached } from "@/lib/project-discovery";
 import { beatPercent } from "@/lib/percentile";
@@ -347,7 +347,7 @@ export async function buildProfilePresentation(
     // has no position there (mirrors the Go facet-rank score gate).
     detail.legacy_read_fallback
       ? Promise.resolve(null)
-      : getFacetRank(detail.username, detail.final_score),
+      : getFacetRankCached(detail.username, detail.final_score),
     weeklyScoreDelta(detail),
   ]);
   const [common_projects, existing_repo_keys] = await Promise.all([

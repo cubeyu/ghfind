@@ -1,4 +1,5 @@
-import { getFacetRank, getScoreBrief } from "@/lib/db";
+import { getScoreBrief } from "@/lib/db";
+import { getFacetRankCached } from "@/lib/developers";
 import { checkRateLimit, rateLimitHeaders } from "@/lib/redis";
 import { decodeRouteParam } from "@/lib/route-params";
 
@@ -42,6 +43,6 @@ export async function GET(
   if (!brief) {
     return Response.json({ facetRank: null }, { headers: { "Cache-Control": CACHE_CONTROL } });
   }
-  const facetRank = await getFacetRank(brief.username, brief.final_score);
+  const facetRank = await getFacetRankCached(brief.username, brief.final_score);
   return Response.json({ facetRank }, { headers: { "Cache-Control": CACHE_CONTROL } });
 }

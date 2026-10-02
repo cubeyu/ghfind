@@ -32,6 +32,7 @@ import { PUBLIC_SCAN_COLLECTION_VERSION } from "./scan-run-types";
 import type {
   AccountDetail,
   FacetCategory,
+  FacetRank,
   LeaderboardEntry,
   LeaderboardWindow,
   ScoreHistogramRow,
@@ -1075,11 +1076,69 @@ export async function clearCachedLeaderboards(): Promise<void> {
 // leaderboard (5 min) is warranted. Paired with the API route's CDN cache and an
 // in-process single-flight (lib/developers.ts), the DB query runs at most once
 // per key per TTL even under a burst.
-const FACET_TTL_SECONDS = 600; // 10 min
+const FACET_TTL_SECONDS = 3600; // 1h
 // The repo graph only changes on scans/backfills, and each cold miss on the
 // unfiltered /projects list is a whole-graph aggregation — so discovery reads
 // tolerate hours of staleness. Matches the facet boards' 6h ISR window.
 const PROJECT_DISCOVERY_TTL_SECONDS = 21600; // 6h
+
+// Per-profile language-board position. Rank shifts only when the bucket is
+// rescanned, so an hour of staleness is invisible; uncached it was a join over
+// the whole bucket (~13k rows_read) on every profile render.
+const FACET_RANK_TTL_SECONDS = 3600;
+const facetRankKey = (username: string, score: number) => `facets:rank:${username}:${score}`;
+
+/** Wrapped so a cached "no rank" (null) is distinguishable from a miss. */
+export async function getCachedFacetRank(
+  username: string,
+  score: number,
+): Promise<{ value: FacetRank | null } | null> {
+  const r = cacheStore();
+  if (!r) return null;
+  try {
+    return (await r.get<{ value: FacetRank | null }>(facetRankKey(username, score))) ?? null;
+  } catch {
+    return null;
+  }
+}
+
+export async function setCachedFacetRank(
+  username: string,
+  score: number,
+  value: FacetRank | null,
+): Promise<void> {
+  const r = cacheStore();
+  if (!r) return;
+  try {
+    await r.set(facetRankKey(username, score), { value }, FACET_RANK_TTL_SECONDS);
+  } catch {
+    // best-effort
+  }
+}
+
+// Short-lived cache for typeahead lookups whose SQL can't use an index
+// (substring/lower() matches): repeated prefixes are common while typing.
+const SEARCH_TTL_SECONDS = 900;
+
+export async function getCachedSearch<T>(key: string): Promise<T | null> {
+  const r = cacheStore();
+  if (!r) return null;
+  try {
+    return (await r.get<T>(`search:${key}`)) ?? null;
+  } catch {
+    return null;
+  }
+}
+
+export async function setCachedSearch<T>(key: string, value: T): Promise<void> {
+  const r = cacheStore();
+  if (!r) return;
+  try {
+    await r.set(`search:${key}`, value, SEARCH_TTL_SECONDS);
+  } catch {
+    // best-effort
+  }
+}
 
 // Bucket values are canonical (e.g. "Rust", "C++") and safe in a Redis key.
 const facetCategoriesKey = (type: FacetType) => `facets:cat:${type}`;
