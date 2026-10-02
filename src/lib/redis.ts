@@ -940,7 +940,10 @@ export async function checkVerdictRateLimit(ip: string): Promise<RateLimitResult
 // whole-table aggregate per TTL serves every profile page, /api/score, share
 // card and MCP call, instead of an O(table) scan per request.
 const SCORE_HISTOGRAM_KEY = "score-hist:v1";
-const SCORE_HISTOGRAM_TTL_SECONDS = 300;
+// Whole-table aggregate (~59k rows_read per refresh) behind every rank and
+// percentile. The global distribution barely moves in half an hour, and each
+// refresh ran ~36×/hour across isolates at 5 minutes.
+const SCORE_HISTOGRAM_TTL_SECONDS = 1800;
 
 export async function getCachedScoreHistogram(): Promise<ScoreHistogramRow[] | null> {
   const r = cacheStore();
@@ -963,7 +966,9 @@ export async function setCachedScoreHistogram(rows: ScoreHistogramRow[]): Promis
 }
 
 const STATS_KEY = "stats:count";
-const STATS_TTL_SECONDS = 60;
+// The homepage counter is decorative; COUNT(*) FROM scores reads every row
+// (~42k), so refresh it every 10 minutes, not every minute.
+const STATS_TTL_SECONDS = 600;
 
 export async function getCachedStats(): Promise<number | null> {
   const r = cacheStore();
@@ -981,6 +986,32 @@ export async function setCachedStats(total: number): Promise<void> {
   if (!r) return;
   try {
     await r.set(STATS_KEY, total, STATS_TTL_SECONDS);
+  } catch {
+    // best-effort
+  }
+}
+
+// Stored project eligibility only drifts when the eligibility rules change in a
+// deploy (new analyses are finalized with current rules), so one isolate per
+// hour re-checks it instead of every cold isolate scanning every assessment.
+const PROJECT_ELIGIBILITY_KEY = "projects:eligibility-reconciled:v1";
+const PROJECT_ELIGIBILITY_TTL_SECONDS = 3600;
+
+export async function isProjectEligibilityReconciled(): Promise<boolean> {
+  const r = cacheStore();
+  if (!r) return false;
+  try {
+    return (await r.get<number>(PROJECT_ELIGIBILITY_KEY)) === 1;
+  } catch {
+    return false;
+  }
+}
+
+export async function markProjectEligibilityReconciled(): Promise<void> {
+  const r = cacheStore();
+  if (!r) return;
+  try {
+    await r.set(PROJECT_ELIGIBILITY_KEY, 1, PROJECT_ELIGIBILITY_TTL_SECONDS);
   } catch {
     // best-effort
   }
@@ -1077,6 +1108,11 @@ export async function clearCachedLeaderboards(): Promise<void> {
 // in-process single-flight (lib/developers.ts), the DB query runs at most once
 // per key per TTL even under a burst.
 const FACET_TTL_SECONDS = 3600; // 1h
+// Per-bucket developer lists (the /developers/{type}/{value} boards). Crawlers
+// walk thousands of distinct buckets, so a 1h TTL still missed ~2k times an
+// hour (~12k rows_read each — the largest D1 read in production). A bucket's
+// head only moves when a member re-scans; six hours of staleness is invisible.
+const FACET_LIST_TTL_SECONDS = 21600; // 6h
 // The repo graph only changes on scans/backfills, and each cold miss on the
 // unfiltered /projects list is a whole-graph aggregation — so discovery reads
 // tolerate hours of staleness. Matches the facet boards' 6h ISR window.
@@ -1111,6 +1147,37 @@ export async function setCachedFacetRank(
   if (!r) return;
   try {
     await r.set(facetRankKey(username, score), { value }, FACET_RANK_TTL_SECONDS);
+  } catch {
+    // best-effort
+  }
+}
+
+// One language bucket's ranked scores (the "score ladder"): every per-profile
+// rank/total/ahead is answered from it in memory, so the bucket is read once
+// per language per TTL instead of three whole-bucket scans per profile.
+const LANGUAGE_LADDER_TTL_SECONDS = 3600;
+const languageLadderKey = (facetValue: string) => `facets:ladder:v1:${facetValue}`;
+
+export async function getCachedLanguageLadder(
+  facetValue: string,
+): Promise<{ usernames: string[]; scores: number[] } | null> {
+  const r = cacheStore();
+  if (!r) return null;
+  try {
+    return (await r.get<{ usernames: string[]; scores: number[] }>(languageLadderKey(facetValue))) ?? null;
+  } catch {
+    return null;
+  }
+}
+
+export async function setCachedLanguageLadder(
+  facetValue: string,
+  ladder: { usernames: string[]; scores: number[] },
+): Promise<void> {
+  const r = cacheStore();
+  if (!r) return;
+  try {
+    await r.set(languageLadderKey(facetValue), ladder, LANGUAGE_LADDER_TTL_SECONDS);
   } catch {
     // best-effort
   }
@@ -1190,7 +1257,7 @@ export async function setCachedFacetDevelopers(
   const r = cacheStore();
   if (!r) return;
   try {
-    await r.set(facetListKey(type, value), entries, FACET_TTL_SECONDS);
+    await r.set(facetListKey(type, value), entries, FACET_LIST_TTL_SECONDS);
   } catch {
     // best-effort
   }
@@ -1255,6 +1322,32 @@ export async function clearCachedReactionCounts(target: string): Promise<void> {
   if (!r) return;
   try {
     await r.del(reactionCountsKey(target));
+  } catch {
+    // best-effort
+  }
+}
+
+// The rendered sitemap.xml (~9 MB, built from a full scan of public profiles
+// and judged matchups). Served by the API Worker; an hour matches the Next
+// app's ISR window for the same route.
+const SITEMAP_TTL_SECONDS = 3600;
+const SITEMAP_KEY = "sitemap:xml:v1";
+
+export async function getCachedSitemapXml(): Promise<string | null> {
+  const r = cacheStore();
+  if (!r) return null;
+  try {
+    return (await r.get<string>(SITEMAP_KEY)) ?? null;
+  } catch {
+    return null;
+  }
+}
+
+export async function setCachedSitemapXml(xml: string): Promise<void> {
+  const r = cacheStore();
+  if (!r) return;
+  try {
+    await r.set(SITEMAP_KEY, xml, SITEMAP_TTL_SECONDS);
   } catch {
     // best-effort
   }
