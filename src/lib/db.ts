@@ -5477,6 +5477,38 @@ async function queryProjectItems(
         ...(options.language ? [options.language] : []),
       ],
     });
+  } else if (options.language) {
+    // Per-language list (related-project filler): restrict the edge set to the
+    // language's repos BEFORE aggregating. Filtering after the whole-graph
+    // `edges` CTE read every repo_developers row (and scanned the whole
+    // account_lookup_limits table for `recent`) for each of the hundreds of
+    // languages — ~215k rows_read per cold key. CROSS JOIN pins the order, and
+    // the lookup count is a per-contributor index seek.
+    result = await db.execute({
+      sql: `WITH edges AS (
+              SELECT DISTINCT rd.repo_key, rd.username
+              FROM repos AS r0
+              CROSS JOIN repo_developers AS rd ON rd.repo_key = r0.repo_key
+              WHERE lower(r0.language) = lower(?)
+            )
+            SELECT r.repo_key, r.name_with_owner, r.owner_login, r.name,
+                   r.description, r.stars, r.forks, r.language, r.topics,
+                   COUNT(*) AS contributor_count,
+                   AVG(s.final_score) AS avg_score,
+                   SUM(CASE WHEN s.tier IN ('夯', '顶级') THEN 1 ELSE 0 END) AS elite_count,
+                   COALESCE(SUM((
+                     SELECT COUNT(*) FROM account_lookup_limits AS l
+                     WHERE l.username = edges.username AND l.last_counted_at >= ?
+                   )), 0) AS recent_lookup_count
+            FROM edges
+            CROSS JOIN repos AS r ON r.repo_key = edges.repo_key
+            CROSS JOIN scores AS s ON s.username = edges.username
+              AND s.hidden = 0
+              AND ${canonicalPublicScorePredicate("s")}
+              AND s.final_score >= ?
+            GROUP BY r.repo_key`,
+      args: [options.language, cutoff, FACET_MIN_SCORE],
+    });
   } else {
     // Whole-graph aggregation (the /projects feed): inherently reads every
     // edge, so it must only run behind the Redis cache (project-discovery.ts).
@@ -5903,18 +5935,36 @@ export async function searchScoredUsers(
   if (!q) return [];
   try {
     await ensureSchema(db);
-    // Escape LIKE wildcards in user input so `_`/`%` are matched literally.
-    const like = `${q.replace(/[\\%_]/g, (m) => `\\${m}`)}%`;
-    const res = await db.execute({
-      sql: `SELECT username, display_name, avatar_url, final_score, tier
-            FROM scores
-            WHERE hidden = 0
-              AND ${canonicalPublicScorePredicate("scores")}
-              AND username LIKE ? ESCAPE '\\'
-            ORDER BY final_score DESC
-            LIMIT ?`,
-      args: [like, limit],
-    });
+    // `username LIKE` can't use the binary-collated PK index, so it scanned
+    // scores in score order until `limit` rows matched — the whole table
+    // (~41k rows_read) for any rare prefix. usernames are stored lowercase, so
+    // an equivalent half-open range plus the PK index seeks only the matching
+    // rows. Short prefixes match too many rows for that to pay off (the score
+    // scan finds `limit` hits almost immediately), so they keep the planner's
+    // default.
+    const upper = `${q}\uffff`;
+    const run = (indexHint: string) =>
+      db.execute({
+        sql: `SELECT username, display_name, avatar_url, final_score, tier
+              FROM scores ${indexHint}
+              WHERE hidden = 0
+                AND ${canonicalPublicScorePredicate("scores")}
+                AND username >= ? AND username < ?
+              ORDER BY final_score DESC
+              LIMIT ?`,
+        args: [q, upper, limit],
+      });
+    let res;
+    if (q.length >= 3) {
+      try {
+        res = await run("INDEXED BY sqlite_autoindex_scores_1");
+      } catch {
+        // Index renamed/absent (e.g. a local schema): correctness over speed.
+        res = await run("");
+      }
+    } else {
+      res = await run("");
+    }
     return res.rows.map((r) => ({
       username: String(r.username),
       display_name: (r.display_name as string | null) ?? null,

@@ -10,15 +10,19 @@
 import {
   getDevelopersByFacet,
   getFacetCategories,
+  getFacetRank,
   type FacetCategory,
+  type FacetRank,
   type LeaderboardEntry,
 } from "@/lib/db";
 import type { FacetType } from "@/lib/facets";
 import {
   getCachedFacetCategories,
   getCachedFacetDevelopers,
+  getCachedFacetRank,
   setCachedFacetCategories,
   setCachedFacetDevelopers,
+  setCachedFacetRank,
 } from "@/lib/redis";
 
 const categoriesInflight = new Map<string, Promise<FacetCategory[]>>();
@@ -75,5 +79,35 @@ export async function getDevelopersByFacetCached(
     return await run;
   } finally {
     developersInflight.delete(key);
+  }
+}
+
+const rankInflight = new Map<string, Promise<FacetRank | null>>();
+
+/** A developer's language-board position, cache-aside + single-flight. */
+export async function getFacetRankCached(
+  username: string,
+  score: number,
+): Promise<FacetRank | null> {
+  const uname = username.toLowerCase();
+  const cached = await getCachedFacetRank(uname, score);
+  if (cached) return cached.value;
+
+  const key = `${uname}:${score}`;
+  const existing = rankInflight.get(key);
+  if (existing) return existing;
+
+  const run = (async () => {
+    const value = await getFacetRank(uname, score);
+    // getFacetRank swallows DB errors into null, so a null can't be told apart
+    // from "no rank" — only cache real ranks, never a possible failure.
+    if (value) await setCachedFacetRank(uname, score, value);
+    return value;
+  })();
+  rankInflight.set(key, run);
+  try {
+    return await run;
+  } finally {
+    rankInflight.delete(key);
   }
 }
