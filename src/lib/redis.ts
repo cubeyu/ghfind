@@ -940,7 +940,10 @@ export async function checkVerdictRateLimit(ip: string): Promise<RateLimitResult
 // whole-table aggregate per TTL serves every profile page, /api/score, share
 // card and MCP call, instead of an O(table) scan per request.
 const SCORE_HISTOGRAM_KEY = "score-hist:v1";
-const SCORE_HISTOGRAM_TTL_SECONDS = 300;
+// Whole-table aggregate (~59k rows_read per refresh) behind every rank and
+// percentile. The global distribution barely moves in half an hour, and each
+// refresh ran ~36×/hour across isolates at 5 minutes.
+const SCORE_HISTOGRAM_TTL_SECONDS = 1800;
 
 export async function getCachedScoreHistogram(): Promise<ScoreHistogramRow[] | null> {
   const r = cacheStore();
@@ -1077,6 +1080,11 @@ export async function clearCachedLeaderboards(): Promise<void> {
 // in-process single-flight (lib/developers.ts), the DB query runs at most once
 // per key per TTL even under a burst.
 const FACET_TTL_SECONDS = 3600; // 1h
+// Per-bucket developer lists (the /developers/{type}/{value} boards). Crawlers
+// walk thousands of distinct buckets, so a 1h TTL still missed ~2k times an
+// hour (~12k rows_read each — the largest D1 read in production). A bucket's
+// head only moves when a member re-scans; six hours of staleness is invisible.
+const FACET_LIST_TTL_SECONDS = 21600; // 6h
 // The repo graph only changes on scans/backfills, and each cold miss on the
 // unfiltered /projects list is a whole-graph aggregation — so discovery reads
 // tolerate hours of staleness. Matches the facet boards' 6h ISR window.
@@ -1111,6 +1119,37 @@ export async function setCachedFacetRank(
   if (!r) return;
   try {
     await r.set(facetRankKey(username, score), { value }, FACET_RANK_TTL_SECONDS);
+  } catch {
+    // best-effort
+  }
+}
+
+// One language bucket's ranked scores (the "score ladder"): every per-profile
+// rank/total/ahead is answered from it in memory, so the bucket is read once
+// per language per TTL instead of three whole-bucket scans per profile.
+const LANGUAGE_LADDER_TTL_SECONDS = 3600;
+const languageLadderKey = (facetValue: string) => `facets:ladder:v1:${facetValue}`;
+
+export async function getCachedLanguageLadder(
+  facetValue: string,
+): Promise<{ usernames: string[]; scores: number[] } | null> {
+  const r = cacheStore();
+  if (!r) return null;
+  try {
+    return (await r.get<{ usernames: string[]; scores: number[] }>(languageLadderKey(facetValue))) ?? null;
+  } catch {
+    return null;
+  }
+}
+
+export async function setCachedLanguageLadder(
+  facetValue: string,
+  ladder: { usernames: string[]; scores: number[] },
+): Promise<void> {
+  const r = cacheStore();
+  if (!r) return;
+  try {
+    await r.set(languageLadderKey(facetValue), ladder, LANGUAGE_LADDER_TTL_SECONDS);
   } catch {
     // best-effort
   }
@@ -1190,7 +1229,7 @@ export async function setCachedFacetDevelopers(
   const r = cacheStore();
   if (!r) return;
   try {
-    await r.set(facetListKey(type, value), entries, FACET_TTL_SECONDS);
+    await r.set(facetListKey(type, value), entries, FACET_LIST_TTL_SECONDS);
   } catch {
     // best-effort
   }
