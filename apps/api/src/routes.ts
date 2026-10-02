@@ -48,6 +48,7 @@ import * as searchUsers from "@/app/api/search-users/route";
 import * as sponsors from "@/app/api/sponsors/route";
 import * as stats from "@/app/api/stats/route";
 import * as talentById from "@/app/api/talent/[id]/route";
+import * as talentIntake from "@/app/api/talent/intake/route";
 import * as talent from "@/app/api/talent/route";
 import * as vsVerdict from "@/app/api/vs-verdict/route";
 
@@ -92,6 +93,9 @@ export const API_ROUTES: ApiRoute[] = [
   { path: "/api/follows", module: follows },
   { path: "/api/follows/:username", module: follow },
   { path: "/api/resumes", module: resumes },
+  // Static segment first: Hono matches in registration order (Next ranks
+  // /api/talent/intake above /api/talent/[id] by itself).
+  { path: "/api/talent/intake", module: talentIntake },
   { path: "/api/talent/:id", module: talentById },
   // Batch 5: scoring, scans, LLM roasts/verdicts, project analyses, campaign
   // SSE, profile backfill, and the secret-gated admin/internal jobs.

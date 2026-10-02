@@ -12,7 +12,7 @@ export interface IslandIntl extends RouteInfo {
 
 export function IslandRoot({ intl, children }: { intl: IslandIntl; children: ReactNode }) {
   return (
-    <RouteContext.Provider value={{ locale: intl.locale, pathname: intl.pathname }}>
+    <RouteContext.Provider value={{ locale: intl.locale, pathname: intl.pathname, search: intl.search, params: intl.params }}>
       <IntlProvider locale={intl.locale} messages={intl.messages} timeZone="UTC">
         {children}
       </IntlProvider>

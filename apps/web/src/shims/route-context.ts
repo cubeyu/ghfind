@@ -6,6 +6,10 @@ export interface RouteInfo {
   locale: Locale;
   /** Locale-agnostic path of the current page, e.g. `/about`. */
   pathname: string;
+  /** Query string of the request (with or without `?`), for useSearchParams during SSR. */
+  search?: string;
+  /** Dynamic route params, for useParams. */
+  params?: Record<string, string>;
 }
 
 export const RouteContext = createContext<RouteInfo>({ locale: "zh", pathname: "/" });

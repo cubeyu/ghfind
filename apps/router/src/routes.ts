@@ -24,6 +24,18 @@ const WEB_PAGES: readonly string[] = [
   "/docs",
   "/github-bot",
   "/sponsor",
+  // P3/P4: data and account pages. "/" is every locale's home; agent
+  // markdown negotiation there falls back to legacy (/index.md).
+  "/",
+  "/talent",
+  "/resume",
+  "/following",
+  "/integrations",
+  "/vs",
+  "/developers",
+  "/leaderboard",
+  "/advx",
+  "/projects",
 ];
 
 /**
@@ -36,6 +48,12 @@ const WEB_PAGES: readonly string[] = [
 const WEB_PATTERNS: readonly RegExp[] = [
   /^\/blog\/[^/.]+$/,
   /^\/collections\/[^/.]+$/,
+  /^\/projects\/analyses\/[^/.]+$/,
+  /^\/vs\/[^/.]+\/[^/.]+$/,
+  // Facet boards; a value ending in a dotted segment (vercel/next.js) stays on
+  // legacy, whose locale proxy skips dotted paths (unprefixed → 404 there).
+  /^\/developers\/(?:language|org|repo)\/(?:[^/]+\/)*[^/.]+$/,
+  /^\/u\/[^/.]+$/,
 ];
 
 /** Build output of the Astro app (hashed JS/CSS). */

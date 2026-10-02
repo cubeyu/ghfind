@@ -2,13 +2,17 @@ import { defineMiddleware } from "astro:middleware";
 import { decideLocale, LOCALE_COOKIE, LOCALE_COOKIE_MAX_AGE, splitLocale } from "@ghfind/i18n";
 import { AGENT_LINK_HEADER } from "@/lib/agent-docs";
 import { deployEnv } from "@/lib/deploy-env";
+import { requestStore } from "./shims/request-store";
+import { notFoundToLegacy } from "./lib/not-found";
 
 /**
  * Locale routing with the exact semantics of the Next app's `src/proxy.ts`
  * (both call `decideLocale` from @ghfind/i18n): cookie → Accept-Language →
  * zh root, zh served unprefixed via an internal rewrite to `/zh/...`.
  */
-export const onRequest = defineMiddleware(async (ctx, next) => {
+export const onRequest = defineMiddleware((ctx, next) => requestStore.run(ctx.request, () => route(ctx, next)));
+
+const route: Parameters<typeof defineMiddleware>[0] = async (ctx, next) => {
   const { pathname, search } = ctx.url;
   // Static assets and non-page routes skip locale handling (same as the
   // Next matcher: anything with a dot, and the Astro build output).
@@ -33,11 +37,9 @@ export const onRequest = defineMiddleware(async (ctx, next) => {
   let res: Response;
   switch (decision.kind) {
     case "markdown": {
-      // The router only sends migrated paths here; home (the only negotiating
-      // route) stays on the Next app until P3, when /index.md moves too.
-      res = await next("/index.md");
-      res.headers.set("Vary", "Accept");
-      return withRobots(res);
+      // Agent negotiation on the home route: the markdown twin is served by the
+      // legacy Worker (/index.md), so hand the request back to it unchanged.
+      return notFoundToLegacy();
     }
     case "redirect": {
       res = new Response(null, { status: 307, headers: { Location: decision.location + search } });
@@ -54,7 +56,7 @@ export const onRequest = defineMiddleware(async (ctx, next) => {
       return withRobots(res);
     }
   }
-});
+};
 
 function mutable(res: Response): Response {
   try {

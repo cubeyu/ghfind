@@ -1,5 +1,6 @@
 import { createTranslator, type AbstractIntlMessages } from "use-intl/core";
 import { DEFAULT_LOCALE, isLocale, type Locale } from "@ghfind/i18n";
+import type { Translator } from "@/lib/translator";
 
 // The Next app's message catalogs are the single source of truth during the
 // migration; they move into @ghfind/i18n once the Next app is retired (P5).
@@ -22,9 +23,7 @@ export async function getTranslator<N extends string>(locale: Locale, namespace:
   const messages = await getMessages(locale);
   // use-intl's generics are keyed to a global message type we don't declare;
   // pages call `t("key")` with plain strings like the Next app does.
-  return createTranslator({ locale, messages, namespace: namespace as never, timeZone: "UTC" }) as unknown as {
-    (key: string, values?: Record<string, string | number>): string;
-    raw(key: string): unknown;
+  return createTranslator({ locale, messages, namespace: namespace as never, timeZone: "UTC" }) as unknown as Translator & {
     has(key: string): boolean;
   };
 }

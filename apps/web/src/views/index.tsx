@@ -14,6 +14,8 @@ import { PrivacyView } from "@/components/pages/PrivacyView";
 import { MethodologyView } from "@/components/pages/MethodologyView";
 import { DocsView } from "@/components/pages/DocsView";
 import { GithubBotView } from "@/components/pages/GithubBotView";
+import { DevelopersIndexView } from "@/components/pages/DevelopersIndexView";
+import { HomeView } from "@/components/pages/HomeView";
 import { RouteContext } from "../shims/route-context";
 
 function Route({ locale, path, children }: { locale: Locale; path: string; children: ReactNode }) {
@@ -57,4 +59,30 @@ export function Docs({ route, ...props }: Routed<typeof DocsView>) {
 
 export function GithubBot({ route, ...props }: Routed<typeof GithubBotView>) {
   return <Route {...route}><GithubBotView {...props} /></Route>;
+}
+
+export function DevelopersIndex({ route, ...props }: Routed<typeof DevelopersIndexView>) {
+  return <Route {...route}><DevelopersIndexView {...props} /></Route>;
+}
+
+type HomeSlots = "roaster" | "developerCount" | "sponsorRow" | "collections" | "leaderboardRail";
+
+/**
+ * The homepage with its interactive pieces as Astro named slots: Astro hands
+ * each slot to the component as a prop (static HTML wrapping an island), so
+ * every island hydrates independently inside the static page.
+ */
+export function Home({ route, ...props }: Omit<Routed<typeof HomeView>, HomeSlots> & Partial<Pick<Routed<typeof HomeView>, HomeSlots>>) {
+  return (
+    <Route {...route}>
+      <HomeView
+        {...props}
+        roaster={props.roaster}
+        developerCount={props.developerCount}
+        sponsorRow={props.sponsorRow}
+        collections={props.collections}
+        leaderboardRail={props.leaderboardRail}
+      />
+    </Route>
+  );
 }

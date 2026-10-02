@@ -10,7 +10,12 @@ import { localePath, type Locale } from "@ghfind/i18n";
 import { NAV_GROUPS } from "@/config/nav";
 import { BrandMark } from "@/components/BrandMark";
 import { getMessages, getTranslator, pickMessages } from "../lib/i18n";
-import { AccountIsland, LanguageIsland, LoginNudgeIsland, SearchIsland, SponsorStripIsland, ThemeIsland } from "../islands";
+import { AccountIsland } from "../islands/AccountIsland";
+import { LanguageIsland } from "../islands/LanguageIsland";
+import { LoginNudgeIsland } from "../islands/LoginNudgeIsland";
+import { SearchIsland } from "../islands/SearchIsland";
+import { SponsorStripIsland } from "../islands/SponsorStripIsland";
+import { ThemeIsland } from "../islands/ThemeIsland";
 import SiteFooter from "./SiteFooter.astro";
 
 interface Props {
