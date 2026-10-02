@@ -39,19 +39,35 @@ interface Props {
   locale: Locale;
   /** Locale-agnostic path of this page, e.g. `/about`. */
   path: string;
-  title: string;
-  description: string;
-  /** Defaults to localeAlternates(locale, path). */
-  alternates?: { canonical: string; languages: Record<string, string> };
+  /** Defaults to the layout title (meta.title), as in Next. */
+  title?: string;
+  /** Defaults to the layout description (meta.description), as in Next. */
+  description?: string;
+  /**
+   * Defaults to localeAlternates(locale, path). `"layout"` reproduces a Next
+   * page that sets no alternates: it inherits the layout's — the home page's
+   * canonical/hreflang plus the markdown and OpenAPI twins.
+   */
+  alternates?: { canonical: string; languages: Record<string, string> } | "layout";
   /** `<link rel="alternate" type="text/markdown">` twin of this page. */
   markdownAlternate?: string;
   openGraph?: OpenGraph;
   twitter?: Twitter;
+  /** `<meta name="robots">`, e.g. "noindex, nofollow" (Next's `robots` metadata). */
+  robots?: string;
 }
 
-const { locale, path, title, description, markdownAlternate, openGraph, twitter } = Astro.props;
+const { locale, path, openGraph, twitter, robots } = Astro.props;
 const t = await getTranslator(locale, "meta");
-const alternates = Astro.props.alternates ?? localeAlternates(locale, path);
+const title = Astro.props.title ?? t("title");
+const description = Astro.props.description ?? t("description");
+const given = Astro.props.alternates;
+const inherited = given === "layout";
+const alternates: { canonical: string; languages: Record<string, string> } =
+  given === undefined || given === "layout" ? localeAlternates(locale, inherited ? "/" : path) : given;
+const typedAlternates: [string, string][] = inherited
+  ? [["text/markdown", "/index.md"], ["application/openapi+json", "/openapi.json"]]
+  : Astro.props.markdownAlternate ? [["text/markdown", Astro.props.markdownAlternate]] : [];
 // Next's metadata resolver renders the root as the bare origin (no trailing
 // slash); match it so canonical/og:url stay byte-identical across stacks.
 const abs = (p: string) => (p === "/" ? new URL(SITE_URL).origin : new URL(p, SITE_URL).href);
@@ -66,11 +82,12 @@ const GA_MEASUREMENT_ID = import.meta.env.PUBLIC_GA_MEASUREMENT_ID ?? "G-GHXRYBF
     <script is:inline set:html={THEME_INIT_SCRIPT} />
     <title>{title}</title>
     <meta name="description" content={description} />
+    {robots && <meta name="robots" content={robots} />}
     <link rel="canonical" href={abs(alternates.canonical)} />
     {Object.entries(alternates.languages).map(([lang, href]) => (
       <link rel="alternate" hreflang={lang} href={abs(href)} />
     ))}
-    {markdownAlternate && <link rel="alternate" type="text/markdown" href={abs(markdownAlternate)} />}
+    {typedAlternates.map(([type, href]) => <link rel="alternate" type={type} href={abs(href)} />)}
     {openGraph ? (
       <>
         <meta property="og:title" content={openGraph.title} />

@@ -14,7 +14,16 @@ describe("pickTarget", () => {
       "/contact", "/en/privacy", "/ja/methodology", "/docs", "/ko/github-bot", "/sponsor"]) {
       expect(pickTarget(p)).toBe("web");
     }
-    for (const p of ["/blog/who-builds-dify.md", "/en/blog/x.md", "/blog/a/b", "/collections/a/b", "/blogs", "/en/collectionsx", "/docs/x", "/integrations", "/sponsor/x"]) {
+    for (const p of ["/blog/who-builds-dify.md", "/en/blog/x.md", "/blog/a/b", "/collections/a/b", "/blogs", "/en/collectionsx", "/docs/x", "/sponsor/x"]) {
+      expect(pickTarget(p)).toBe("legacy");
+    }
+  });
+
+  it("serves the P3/P4 data and account pages from web", () => {
+    for (const p of ["/talent", "/en/resume", "/following", "/ja/integrations", "/projects/analyses/abc-123", "/en/projects/analyses/x"]) {
+      expect(pickTarget(p)).toBe("web");
+    }
+    for (const p of ["/projects/analyses", "/projects/analyses/a/b", "/talentx"]) {
       expect(pickTarget(p)).toBe("legacy");
     }
   });

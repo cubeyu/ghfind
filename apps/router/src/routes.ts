@@ -24,6 +24,11 @@ const WEB_PAGES: readonly string[] = [
   "/docs",
   "/github-bot",
   "/sponsor",
+  // P3/P4: data and account pages.
+  "/talent",
+  "/resume",
+  "/following",
+  "/integrations",
 ];
 
 /**
@@ -36,6 +41,7 @@ const WEB_PAGES: readonly string[] = [
 const WEB_PATTERNS: readonly RegExp[] = [
   /^\/blog\/[^/.]+$/,
   /^\/collections\/[^/.]+$/,
+  /^\/projects\/analyses\/[^/.]+$/,
 ];
 
 /** Build output of the Astro app (hashed JS/CSS). */

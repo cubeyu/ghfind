@@ -42,6 +42,10 @@ export default defineConfig({
         // these shims (order matters: specific aliases before `@/`).
         { find: /^next-intl$/, replacement: here("./src/shims/next-intl.tsx") },
         { find: /^@\/i18n\/navigation$/, replacement: here("./src/shims/navigation.tsx") },
+        { find: /^next\/navigation$/, replacement: here("./src/shims/next-navigation.tsx") },
+        { find: /^next\/headers$/, replacement: here("./src/shims/next-headers.ts") },
+        { find: /^@opennextjs\/cloudflare$/, replacement: here("./src/shims/opennext-cloudflare.ts") },
+        { find: /^server-only$/, replacement: here("./src/shims/server-only.ts") },
         { find: /^@\//, replacement: here("../../src/") },
       ],
     },

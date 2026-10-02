@@ -13,6 +13,11 @@ import { NavAuth } from "@/components/NavAuth";
 import { PoweredByLobeHub, SponsorStrip } from "@/components/Sponsor";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { useTranslations } from "next-intl";
+import { TalentDirectory } from "@/components/talent/TalentDirectory";
+import { ResumeBuilder } from "@/components/resume/ResumeBuilder";
+import { ProjectAnalysisStatus } from "@/components/ProjectAnalysisStatus";
+import { FollowingView } from "@/components/pages/FollowingView";
+import { IntegrationsView } from "@/components/pages/IntegrationsView";
 import { IslandRoot, type IslandIntl } from "./IslandRoot";
 
 type WithIntl<P = object> = P & { intl: IslandIntl };
@@ -63,4 +68,32 @@ function SponsorPageBody() {
 
 export function SponsorPageIsland({ intl }: WithIntl) {
   return <IslandRoot intl={intl}><SponsorPageBody /></IslandRoot>;
+}
+
+export function TalentIsland({ intl, ...props }: WithIntl<React.ComponentProps<typeof TalentDirectory>>) {
+  return <IslandRoot intl={intl}><TalentDirectory {...props} /></IslandRoot>;
+}
+
+export function ResumeIsland({ intl, zh }: WithIntl<{ zh: boolean }>) {
+  return <IslandRoot intl={intl}><ResumeBuilder zh={zh} /></IslandRoot>;
+}
+
+export function ProjectAnalysisIsland({ intl, initial }: WithIntl<React.ComponentProps<typeof ProjectAnalysisStatus>>) {
+  return <IslandRoot intl={intl}><ProjectAnalysisStatus initial={initial} /></IslandRoot>;
+}
+
+function FollowingBody() {
+  return <FollowingView t={useTranslations("follow")} />;
+}
+
+export function FollowingPageIsland({ intl }: WithIntl) {
+  return <IslandRoot intl={intl}><FollowingBody /></IslandRoot>;
+}
+
+function IntegrationsBody(props: Omit<React.ComponentProps<typeof IntegrationsView>, "t">) {
+  return <IntegrationsView {...props} t={useTranslations("integrations")} />;
+}
+
+export function IntegrationsPageIsland({ intl, ...props }: WithIntl<Omit<React.ComponentProps<typeof IntegrationsView>, "t">>) {
+  return <IslandRoot intl={intl}><IntegrationsBody {...props} /></IslandRoot>;
 }
