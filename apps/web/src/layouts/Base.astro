@@ -23,16 +23,18 @@ interface OpenGraph {
   title: string;
   description: string;
   url: string;
-  type: "article";
+  type: "article" | "website";
   publishedTime?: string;
   modifiedTime?: string;
-  images?: { url: string; width?: number; height?: number }[];
+  images?: { url: string; width?: number; height?: number; alt?: string; type?: string }[];
 }
 interface Twitter {
   card: "summary_large_image";
   title: string;
   description: string;
   images?: string[];
+  /** `twitter:image:alt` for the (first) image. */
+  imageAlt?: string;
 }
 
 interface Props {
@@ -96,8 +98,10 @@ const GA_MEASUREMENT_ID = import.meta.env.PUBLIC_GA_MEASUREMENT_ID ?? "G-GHXRYBF
         {openGraph.images?.map((image) => (
           <>
             <meta property="og:image" content={abs(image.url)} />
+            {image.type && <meta property="og:image:type" content={image.type} />}
             {image.width && <meta property="og:image:width" content={String(image.width)} />}
             {image.height && <meta property="og:image:height" content={String(image.height)} />}
+            {image.alt && <meta property="og:image:alt" content={image.alt} />}
           </>
         ))}
         <meta property="og:type" content={openGraph.type} />
@@ -124,6 +128,7 @@ const GA_MEASUREMENT_ID = import.meta.env.PUBLIC_GA_MEASUREMENT_ID ?? "G-GHXRYBF
         <meta name="twitter:title" content={twitter.title} />
         <meta name="twitter:description" content={twitter.description} />
         {twitter.images?.map((image) => <meta name="twitter:image" content={abs(image)} />)}
+        {twitter.imageAlt && <meta name="twitter:image:alt" content={twitter.imageAlt} />}
       </>
     ) : (
       <>

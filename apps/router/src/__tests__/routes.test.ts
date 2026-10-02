@@ -21,10 +21,13 @@ describe("pickTarget", () => {
 
   it("serves the P3/P4 data and account pages from web", () => {
     for (const p of ["/talent", "/en/resume", "/following", "/ja/integrations", "/projects/analyses/abc-123", "/en/projects/analyses/x",
-      "/vs", "/en/developers", "/leaderboard", "/ar/advx", "/projects", "/", "/en", "/ja"]) {
+      "/vs", "/en/developers", "/leaderboard", "/ar/advx", "/projects", "/", "/en", "/ja",
+      "/vs/a/b", "/en/vs/gaearon/torvalds", "/developers/language/Rust", "/developers/language/C%2B%2B",
+      "/ja/developers/repo/langgenius/dify", "/developers/org/vercel", "/u/torvalds", "/en/u/gaearon"]) {
       expect(pickTarget(p)).toBe("web");
     }
-    for (const p of ["/projects/analyses", "/projects/analyses/a/b", "/talentx", "/leaderboardx"]) {
+    for (const p of ["/projects/analyses", "/projects/analyses/a/b", "/talentx", "/leaderboardx",
+      "/vs/a", "/vs/a/b/c", "/developers/repo/vercel/next.js", "/developers/bogus/x", "/developers/language", "/u", "/u/a/b"]) {
       expect(pickTarget(p)).toBe("legacy");
     }
   });
@@ -81,7 +84,7 @@ describe("pickTarget", () => {
   });
 
   it("keeps everything else on legacy", () => {
-    for (const p of ["/about/team", "/aboutx", "/u/torvalds", "/api/score/x/y", "/_next/static/x.js", "/favicon.ico", "/mcp", "/index.md"]) {
+    for (const p of ["/about/team", "/aboutx", "/api/score/x/y", "/_next/static/x.js", "/favicon.ico", "/mcp", "/index.md"]) {
       expect(pickTarget(p)).toBe("legacy");
     }
   });

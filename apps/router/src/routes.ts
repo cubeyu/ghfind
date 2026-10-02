@@ -49,6 +49,11 @@ const WEB_PATTERNS: readonly RegExp[] = [
   /^\/blog\/[^/.]+$/,
   /^\/collections\/[^/.]+$/,
   /^\/projects\/analyses\/[^/.]+$/,
+  /^\/vs\/[^/.]+\/[^/.]+$/,
+  // Facet boards; a value ending in a dotted segment (vercel/next.js) stays on
+  // legacy, whose locale proxy skips dotted paths (unprefixed → 404 there).
+  /^\/developers\/(?:language|org|repo)\/(?:[^/]+\/)*[^/.]+$/,
+  /^\/u\/[^/.]+$/,
 ];
 
 /** Build output of the Astro app (hashed JS/CSS). */

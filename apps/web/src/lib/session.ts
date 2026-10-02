@@ -5,21 +5,42 @@ interface Service {
 }
 
 /**
- * Whether the request carries a valid session, asked of ghfind-api's
- * /api/me over the API service binding — the auth secrets stay on the API
- * Worker only. Same answer as the Next app's `auth()` (both verify the
- * ghfind_session cookie).
+ * Session-dependent reads go to ghfind-api over the API service binding, with
+ * the visitor's cookie — the auth secrets stay on the API Worker only. The
+ * answers match the Next app's `auth()`/`oauthConfigured()` (same handlers).
  */
-export async function isSignedIn(request: Request): Promise<boolean> {
+async function apiJson<T>(request: Request, path: string): Promise<T | null> {
   const api = env.API as Service | undefined;
-  const cookie = request.headers.get("cookie");
-  if (!api || !cookie?.includes("ghfind_session=")) return false;
+  if (!api) return null;
   try {
-    const res = await api.fetch(new Request(new URL("/api/me", request.url), { headers: { cookie } }));
-    if (!res.ok) return false;
-    const body = (await res.json()) as { user?: unknown };
-    return Boolean(body.user);
+    const headers: Record<string, string> = {};
+    const cookie = request.headers.get("cookie");
+    if (cookie) headers.cookie = cookie;
+    const res = await api.fetch(new Request(new URL(path, request.url), { headers }));
+    return res.ok ? ((await res.json()) as T) : null;
   } catch {
-    return false;
+    return null;
   }
+}
+
+export interface Viewer {
+  /** Signed-in GitHub login, or null. */
+  login: string | null;
+  /** Whether this deployment offers GitHub sign-in at all. */
+  oauth: boolean;
+}
+
+export async function getViewer(request: Request): Promise<Viewer> {
+  const me = await apiJson<{ user: { login: string } | null; oauth: boolean }>(request, "/api/me");
+  return { login: me?.user?.login ?? null, oauth: Boolean(me?.oauth) };
+}
+
+export async function isSignedIn(request: Request): Promise<boolean> {
+  if (!request.headers.get("cookie")?.includes("ghfind_session=")) return false;
+  return (await getViewer(request)).login !== null;
+}
+
+/** GET an API route as the visitor (their cookie), e.g. reaction state. */
+export function getAsViewer<T>(request: Request, path: string): Promise<T | null> {
+  return apiJson<T>(request, path);
 }
