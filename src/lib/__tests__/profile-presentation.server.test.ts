@@ -24,7 +24,6 @@ vi.mock("@/lib/db", () => ({
   filterExistingRepoKeys: mocks.filterExistingRepoKeys,
   getAccountDetail: mocks.getAccountDetail,
   getCurrentCanonicalQuickScan: mocks.getCurrentCanonicalQuickScan,
-  getFacetRank: mocks.getFacetRank,
   getMatchup: mocks.getMatchup,
   getProfileSnapshot: mocks.getProfileSnapshot,
   getSimilarAccounts: mocks.getSimilarAccounts,
@@ -33,6 +32,7 @@ vi.mock("@/lib/db", () => ({
   getWeeklyBaselines: mocks.getWeeklyBaselines,
   resolveWeeklyDelta: mocks.resolveWeeklyDelta,
 }));
+vi.mock("@/lib/developers", () => ({ getFacetRankCached: mocks.getFacetRank }));
 vi.mock("@/lib/project-discovery", () => ({
   getDeveloperCommonProjectsCached: mocks.getDeveloperCommonProjectsCached,
 }));

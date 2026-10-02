@@ -7,6 +7,30 @@
 @source "../";
 
 /*
+ * Geist / Geist Mono, self-hosted like next/font does for the Next app (which
+ * exposes them as --font-geist-sans / --font-geist-mono; globals.css builds
+ * --font-sans / --font-mono on those variables). Latin subset, as there.
+ */
+@font-face {
+  font-family: "Geist";
+  src: url("../fonts/geist-latin.woff2") format("woff2");
+  font-weight: 100 900;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Geist Mono";
+  src: url("../fonts/geist-mono-latin.woff2") format("woff2");
+  font-weight: 100 900;
+  font-style: normal;
+  font-display: swap;
+}
+:root {
+  --font-geist-sans: "Geist", system-ui, sans-serif;
+  --font-geist-mono: "Geist Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+/*
  * Mobile drawer. The Next shell renders a second sidebar inside a Radix Sheet;
  * here the one server-rendered sidebar slides in instead, so the nav HTML and
  * its islands exist once per page.

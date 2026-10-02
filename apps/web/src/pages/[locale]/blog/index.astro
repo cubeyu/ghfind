@@ -1,0 +1,16 @@
+---
+import Base from "../../../layouts/Base.astro";
+import { BlogIndex } from "../../../views";
+import { getTranslator, routeLocale } from "../../../lib/i18n";
+import { STATIC_PAGE_CACHE } from "../../../lib/not-found";
+import { listPosts } from "@/lib/blog";
+
+const locale = routeLocale(Astro.params.locale);
+if (!locale) return new Response(null, { status: 404 });
+
+const [t, tMeta] = await Promise.all([getTranslator(locale, "blog"), getTranslator(locale, "meta")]);
+Astro.response.headers.set("Cache-Control", STATIC_PAGE_CACHE);
+---
+<Base locale={locale} path="/blog" title={`${t("heading")} · ${tMeta("siteName")}`} description={t("subtitle")}>
+  <BlogIndex route={{ locale, path: "/blog" }} locale={locale} posts={listPosts(locale)} t={t} />
+</Base>

@@ -20,6 +20,24 @@ function wranglerEnv(path: string, env: string) {
   return JSON.parse(text).env[env];
 }
 
+describe("production web Worker configuration", () => {
+  // apps/web pages run the same src/lib data code as the API Worker.
+  const web = wranglerEnv("apps/web/wrangler.jsonc", "production");
+  const api = wranglerEnv("apps/api/wrangler.jsonc", "production");
+
+  it("matches the API Worker's vars and data bindings", () => {
+    expect(web.vars).toEqual(api.vars);
+    expect(web.d1_databases).toEqual(api.d1_databases);
+    expect(web.kv_namespaces).toEqual(api.kv_namespaces);
+    expect(web.durable_objects.bindings).toEqual(api.durable_objects.bindings);
+  });
+
+  it("reaches the production API Worker for session reads and owns no route", () => {
+    expect(web.services).toEqual([{ binding: "API", service: "ghfind-api" }]);
+    expect(web.routes).toBeUndefined();
+  });
+});
+
 describe("production api Worker configuration", () => {
   const api = wranglerEnv("apps/api/wrangler.jsonc", "production");
   const legacy = renderWeb("0".repeat(40), "all", api.vars);

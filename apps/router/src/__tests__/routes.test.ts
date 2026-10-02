@@ -9,6 +9,29 @@ describe("pickTarget", () => {
     expect(pickTarget("/ar/about")).toBe("web");
   });
 
+  it("serves the P2 content pages from web in every locale, markdown twins and the rest from legacy", () => {
+    for (const p of ["/blog", "/en/blog", "/ja/blog/who-builds-dify", "/blog/who-builds-dify", "/collections", "/ar/collections", "/en/collections/bojie-li",
+      "/contact", "/en/privacy", "/ja/methodology", "/docs", "/ko/github-bot", "/sponsor"]) {
+      expect(pickTarget(p)).toBe("web");
+    }
+    for (const p of ["/blog/who-builds-dify.md", "/en/blog/x.md", "/blog/a/b", "/collections/a/b", "/blogs", "/en/collectionsx", "/docs/x", "/sponsor/x"]) {
+      expect(pickTarget(p)).toBe("legacy");
+    }
+  });
+
+  it("serves the P3/P4 data and account pages from web", () => {
+    for (const p of ["/talent", "/en/resume", "/following", "/ja/integrations", "/projects/analyses/abc-123", "/en/projects/analyses/x",
+      "/vs", "/en/developers", "/leaderboard", "/ar/advx", "/projects", "/", "/en", "/ja",
+      "/vs/a/b", "/en/vs/gaearon/torvalds", "/developers/language/Rust", "/developers/language/C%2B%2B",
+      "/ja/developers/repo/langgenius/dify", "/developers/org/vercel", "/u/torvalds", "/en/u/gaearon"]) {
+      expect(pickTarget(p)).toBe("web");
+    }
+    for (const p of ["/projects/analyses", "/projects/analyses/a/b", "/talentx", "/leaderboardx",
+      "/vs/a", "/vs/a/b/c", "/developers/repo/vercel/next.js", "/developers/bogus/x", "/developers/language", "/u", "/u/a/b"]) {
+      expect(pickTarget(p)).toBe("legacy");
+    }
+  });
+
   it("serves Astro build assets from web", () => {
     expect(pickTarget("/_astro/index.abc123.js")).toBe("web");
   });
@@ -61,7 +84,7 @@ describe("pickTarget", () => {
   });
 
   it("keeps everything else on legacy", () => {
-    for (const p of ["/", "/en", "/about/team", "/aboutx", "/u/torvalds", "/api/score/x/y", "/_next/static/x.js", "/favicon.ico", "/mcp"]) {
+    for (const p of ["/about/team", "/aboutx", "/api/score/x/y", "/_next/static/x.js", "/favicon.ico", "/mcp", "/index.md"]) {
       expect(pickTarget(p)).toBe("legacy");
     }
   });

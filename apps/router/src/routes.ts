@@ -15,6 +15,45 @@ export type Target = "web" | "api" | "legacy";
  */
 const WEB_PAGES: readonly string[] = [
   "/about",
+  // P2: content pages.
+  "/blog",
+  "/collections",
+  "/contact",
+  "/privacy",
+  "/methodology",
+  "/docs",
+  "/github-bot",
+  "/sponsor",
+  // P3/P4: data and account pages. "/" is every locale's home; agent
+  // markdown negotiation there falls back to legacy (/index.md).
+  "/",
+  "/talent",
+  "/resume",
+  "/following",
+  "/integrations",
+  "/vs",
+  "/developers",
+  "/leaderboard",
+  "/advx",
+  "/projects",
+];
+
+/**
+ * Dynamic pages served by the Astro Worker, matched like WEB_PAGES on the
+ * locale-agnostic path. Slugs never contain a dot, so `/blog/x.md` (the
+ * markdown twin) stays on legacy. Unknown slugs come back from web as a 404
+ * marked for legacy fallback (src/index.ts), so the Next not-found page stays
+ * the single 404 page.
+ */
+const WEB_PATTERNS: readonly RegExp[] = [
+  /^\/blog\/[^/.]+$/,
+  /^\/collections\/[^/.]+$/,
+  /^\/projects\/analyses\/[^/.]+$/,
+  /^\/vs\/[^/.]+\/[^/.]+$/,
+  // Facet boards; a value ending in a dotted segment (vercel/next.js) stays on
+  // legacy, whose locale proxy skips dotted paths (unprefixed → 404 there).
+  /^\/developers\/(?:language|org|repo)\/(?:[^/]+\/)*[^/.]+$/,
+  /^\/u\/[^/.]+$/,
 ];
 
 /** Build output of the Astro app (hashed JS/CSS). */
@@ -81,5 +120,5 @@ export function pickTarget(pathname: string): Target {
   }
   if (WEB_PREFIXES.some((prefix) => pathname.startsWith(prefix))) return "web";
   const { path } = splitLocale(pathname);
-  return WEB_PAGES.includes(path) ? "web" : "legacy";
+  return WEB_PAGES.includes(path) || WEB_PATTERNS.some((re) => re.test(path)) ? "web" : "legacy";
 }
