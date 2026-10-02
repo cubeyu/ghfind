@@ -18,6 +18,10 @@ import { ResumeBuilder } from "@/components/resume/ResumeBuilder";
 import { ProjectAnalysisStatus } from "@/components/ProjectAnalysisStatus";
 import { FollowingView } from "@/components/pages/FollowingView";
 import { IntegrationsView } from "@/components/pages/IntegrationsView";
+import { VsIndexView } from "@/components/pages/VsIndexView";
+import { LeaderboardPageView } from "@/components/pages/LeaderboardPageView";
+import { AdvxView } from "@/components/pages/AdvxView";
+import { ProjectsView } from "@/components/pages/ProjectsView";
 import { IslandRoot, type IslandIntl } from "./IslandRoot";
 
 type WithIntl<P = object> = P & { intl: IslandIntl };
@@ -96,4 +100,31 @@ function IntegrationsBody(props: Omit<React.ComponentProps<typeof IntegrationsVi
 
 export function IntegrationsPageIsland({ intl, ...props }: WithIntl<Omit<React.ComponentProps<typeof IntegrationsView>, "t">>) {
   return <IslandRoot intl={intl}><IntegrationsBody {...props} /></IslandRoot>;
+}
+
+type WithoutT<C extends (props: never) => unknown> = Omit<Parameters<C>[0], "t">;
+
+function VsIndexBody(props: WithoutT<typeof VsIndexView>) {
+  return <VsIndexView {...props} t={useTranslations("vs")} />;
+}
+export function VsIndexIsland({ intl, ...props }: WithIntl<WithoutT<typeof VsIndexView>>) {
+  return <IslandRoot intl={intl}><VsIndexBody {...props} /></IslandRoot>;
+}
+
+function LeaderboardBody(props: WithoutT<typeof LeaderboardPageView>) {
+  return <LeaderboardPageView {...props} t={useTranslations("leaderboard")} />;
+}
+export function LeaderboardIsland({ intl, ...props }: WithIntl<WithoutT<typeof LeaderboardPageView>>) {
+  return <IslandRoot intl={intl}><LeaderboardBody {...props} /></IslandRoot>;
+}
+
+export function AdvxIsland({ intl, ...props }: WithIntl<Parameters<typeof AdvxView>[0]>) {
+  return <IslandRoot intl={intl}><AdvxView {...props} /></IslandRoot>;
+}
+
+function ProjectsBody(props: WithoutT<typeof ProjectsView>) {
+  return <ProjectsView {...props} t={useTranslations("projectBoards")} />;
+}
+export function ProjectsIsland({ intl, ...props }: WithIntl<WithoutT<typeof ProjectsView>>) {
+  return <IslandRoot intl={intl}><ProjectsBody {...props} /></IslandRoot>;
 }

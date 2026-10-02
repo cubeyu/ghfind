@@ -14,6 +14,7 @@ import { PrivacyView } from "@/components/pages/PrivacyView";
 import { MethodologyView } from "@/components/pages/MethodologyView";
 import { DocsView } from "@/components/pages/DocsView";
 import { GithubBotView } from "@/components/pages/GithubBotView";
+import { DevelopersIndexView } from "@/components/pages/DevelopersIndexView";
 import { RouteContext } from "../shims/route-context";
 
 function Route({ locale, path, children }: { locale: Locale; path: string; children: ReactNode }) {
@@ -57,4 +58,8 @@ export function Docs({ route, ...props }: Routed<typeof DocsView>) {
 
 export function GithubBot({ route, ...props }: Routed<typeof GithubBotView>) {
   return <Route {...route}><GithubBotView {...props} /></Route>;
+}
+
+export function DevelopersIndex({ route, ...props }: Routed<typeof DevelopersIndexView>) {
+  return <Route {...route}><DevelopersIndexView {...props} /></Route>;
 }

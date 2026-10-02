@@ -20,10 +20,11 @@ describe("pickTarget", () => {
   });
 
   it("serves the P3/P4 data and account pages from web", () => {
-    for (const p of ["/talent", "/en/resume", "/following", "/ja/integrations", "/projects/analyses/abc-123", "/en/projects/analyses/x"]) {
+    for (const p of ["/talent", "/en/resume", "/following", "/ja/integrations", "/projects/analyses/abc-123", "/en/projects/analyses/x",
+      "/vs", "/en/developers", "/leaderboard", "/ar/advx", "/projects"]) {
       expect(pickTarget(p)).toBe("web");
     }
-    for (const p of ["/projects/analyses", "/projects/analyses/a/b", "/talentx"]) {
+    for (const p of ["/projects/analyses", "/projects/analyses/a/b", "/talentx", "/leaderboardx"]) {
       expect(pickTarget(p)).toBe("legacy");
     }
   });

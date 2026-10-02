@@ -29,6 +29,11 @@ const WEB_PAGES: readonly string[] = [
   "/resume",
   "/following",
   "/integrations",
+  "/vs",
+  "/developers",
+  "/leaderboard",
+  "/advx",
+  "/projects",
 ];
 
 /**
