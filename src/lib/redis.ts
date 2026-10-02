@@ -544,6 +544,30 @@ export async function setCachedProjectAnalysisId(
   }
 }
 
+const GITHUB_NAME_TTL_SECONDS = 60 * 60 * 24;
+const githubNameKey = (username: string) => `github-name:v1:${username.toLowerCase()}`;
+
+/**
+ * Cached public GitHub profile name (collections' nickname fallback).
+ * `undefined` = not cached; `null` = cached "profile has no name".
+ */
+export async function getCachedGitHubName(username: string): Promise<string | null | undefined> {
+  const r = cacheStore();
+  if (!r) return undefined;
+  try {
+    const value = await r.get<{ name: string | null }>(githubNameKey(username));
+    return value && typeof value === "object" && "name" in value ? value.name : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+export async function setCachedGitHubName(username: string, name: string | null): Promise<void> {
+  const r = cacheStore();
+  if (!r) return;
+  await r.set(githubNameKey(username), { name }, GITHUB_NAME_TTL_SECONDS).catch(() => {});
+}
+
 export async function clearCachedProjectAnalysisId(
   fingerprint: string,
 ): Promise<void> {

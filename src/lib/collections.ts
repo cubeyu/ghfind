@@ -1,6 +1,7 @@
 import { HTML_LANG, routing } from "@/i18n/routing";
 import { readingMinutes } from "@/lib/blog";
 import { contentFileExists, listContentDir, readContentFile } from "@/lib/content-files";
+import { getCachedGitHubName, setCachedGitHubName } from "@/lib/redis";
 import type { Tier } from "@/lib/types";
 
 /**
@@ -130,9 +131,14 @@ export function pickText(text: LocalizedText, locale: string): string {
 /**
  * Public GitHub profile name used only when editorial metadata has no nickname.
  * The result is revalidated daily, while a PR-supplied `subject.nickname` stays
- * authoritative and avoids this request entirely.
+ * authoritative and avoids this request entirely. Cached for a day in the
+ * shared read-model cache as well as Next's data cache: unauthenticated GitHub
+ * calls from shared Worker IPs are often rate-limited, and the Astro pages have
+ * no data cache of their own.
  */
 export async function getGitHubNickname(username: string): Promise<string | null> {
+  const cached = await getCachedGitHubName(username);
+  if (cached !== undefined) return cached;
   try {
     const response = await fetch(
       `https://api.github.com/users/${encodeURIComponent(username)}`,
@@ -144,11 +150,13 @@ export async function getGitHubNickname(username: string): Promise<string | null
         next: { revalidate: 86_400 },
       },
     );
+    // Failures aren't cached: the next render retries.
     if (!response.ok) return null;
     const profile = (await response.json()) as { name?: unknown };
-    return typeof profile.name === "string" && profile.name.trim()
-      ? profile.name.trim()
-      : null;
+    const name =
+      typeof profile.name === "string" && profile.name.trim() ? profile.name.trim() : null;
+    await setCachedGitHubName(username, name);
+    return name;
   } catch {
     return null;
   }

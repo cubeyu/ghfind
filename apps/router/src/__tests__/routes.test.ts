@@ -21,7 +21,7 @@ describe("pickTarget", () => {
 
   it("serves the P3/P4 data and account pages from web", () => {
     for (const p of ["/talent", "/en/resume", "/following", "/ja/integrations", "/projects/analyses/abc-123", "/en/projects/analyses/x",
-      "/vs", "/en/developers", "/leaderboard", "/ar/advx", "/projects"]) {
+      "/vs", "/en/developers", "/leaderboard", "/ar/advx", "/projects", "/", "/en", "/ja"]) {
       expect(pickTarget(p)).toBe("web");
     }
     for (const p of ["/projects/analyses", "/projects/analyses/a/b", "/talentx", "/leaderboardx"]) {
@@ -81,7 +81,7 @@ describe("pickTarget", () => {
   });
 
   it("keeps everything else on legacy", () => {
-    for (const p of ["/", "/en", "/about/team", "/aboutx", "/u/torvalds", "/api/score/x/y", "/_next/static/x.js", "/favicon.ico", "/mcp"]) {
+    for (const p of ["/about/team", "/aboutx", "/u/torvalds", "/api/score/x/y", "/_next/static/x.js", "/favicon.ico", "/mcp", "/index.md"]) {
       expect(pickTarget(p)).toBe("legacy");
     }
   });

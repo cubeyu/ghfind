@@ -24,7 +24,9 @@ const WEB_PAGES: readonly string[] = [
   "/docs",
   "/github-bot",
   "/sponsor",
-  // P3/P4: data and account pages.
+  // P3/P4: data and account pages. "/" is every locale's home; agent
+  // markdown negotiation there falls back to legacy (/index.md).
+  "/",
   "/talent",
   "/resume",
   "/following",
