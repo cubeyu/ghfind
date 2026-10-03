@@ -20,6 +20,10 @@
     {
       "name": "0004_project_assessment_sync_index.sql",
       "sha256": "ee6f09dc11be81cb49006b8753cd4470e3d8d67e5335712649fb2f94c899a83a"
+    },
+    {
+      "name": "0017_discovery_read_indexes.sql",
+      "sha256": "d78785236d8e43f253561425b75a837c4d8d90b4562f09f3be7acfdc6521d63e"
     }
   ],
   "feed": [

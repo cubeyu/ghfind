@@ -1049,8 +1049,19 @@ const LEADERBOARD_WINDOWS: LeaderboardWindow[] = ["24h", "7d", "30d", "all"];
 // One Redis entry per (view, window) pair — 4 × 4 = 16 keys, each a slow-moving
 // 500-row payload. A hit skips the triple-LEFT-JOIN DB read entirely.
 const leaderboardKey = (view: LeaderboardCacheView, window: LeaderboardWindow) =>
-  `leaderboard:${view}:${window}`;
-const LEADERBOARD_TTL_SECONDS = 300; // 5 min — board moves slowly; fewer DB reads
+  `leaderboard:v2:${view}:${window}`;
+export const LEADERBOARD_FRESH_MS = 5 * 60_000;
+const LEADERBOARD_TTL_SECONDS = 30 * 60;
+export interface CachedLeaderboard { entries: LeaderboardEntry[]; at: number }
+
+/** Coordinate stale refreshes across isolates; retain the lease until expiry
+ * so eventually consistent KV readers cannot trigger another refresh at once. */
+export async function acquireLeaderboardRefresh(view: LeaderboardCacheView, window: LeaderboardWindow): Promise<boolean> {
+  const r = atomicStore();
+  if (!r) return true;
+  try { return await r.setIfAbsent(`lock:leaderboard:v2:${view}:${window}`, "1", 60); }
+  catch { return true; }
+}
 const CAMPAIGN_LEADERBOARD_REVISION_TTL_SECONDS = 7 * 24 * 60 * 60;
 const localCampaignLeaderboardRevisions = new Map<string, number>();
 const campaignLeaderboardRevisionKey = (campaign: string) =>
@@ -1087,11 +1098,12 @@ export async function getCampaignLeaderboardRevision(campaign: string): Promise<
 export async function getCachedLeaderboard(
   view: LeaderboardCacheView = "trending",
   window: LeaderboardWindow = "all",
-): Promise<LeaderboardEntry[] | null> {
+): Promise<CachedLeaderboard | null> {
   const r = cacheStore();
   if (!r) return null;
   try {
-    return (await r.get<LeaderboardEntry[]>(leaderboardKey(view, window))) ?? null;
+    const value = await r.get<CachedLeaderboard>(leaderboardKey(view, window));
+    return value && Array.isArray(value.entries) && typeof value.at === "number" ? value : null;
   } catch {
     return null;
   }
@@ -1105,7 +1117,7 @@ export async function setCachedLeaderboard(
   const r = cacheStore();
   if (!r) return;
   try {
-    await r.set(leaderboardKey(view, window), entries, LEADERBOARD_TTL_SECONDS);
+    await r.set(leaderboardKey(view, window), { entries, at: Date.now() }, LEADERBOARD_TTL_SECONDS);
   } catch {
     // best-effort
   }
@@ -1123,6 +1135,24 @@ export async function clearCachedLeaderboards(): Promise<void> {
   } catch {
     // best-effort
   }
+}
+
+// Cache recommendation membership; hydrate the few selected users from D1 on
+// every hit so hiding a user immediately removes them from recommendations.
+export async function getCachedSimilarUsernames(key: string): Promise<string[] | null> {
+  const r = cacheStore();
+  if (!r) return null;
+  try {
+    const value = await r.get<string[]>(`similar:v1:${key}`);
+    return Array.isArray(value) && value.every(name => typeof name === "string") ? value : null;
+  } catch { return null; }
+}
+
+export async function setCachedSimilarUsernames(key: string, usernames: string[]): Promise<void> {
+  const r = cacheStore();
+  if (!r) return;
+  try { await r.set(`similar:v1:${key}`, usernames, 3600); }
+  catch { /* best-effort */ }
 }
 
 // /developers directory caches. Both reads (per-bucket dev list, category grid)

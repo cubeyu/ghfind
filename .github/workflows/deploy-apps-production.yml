@@ -56,6 +56,14 @@ jobs:
           test "$(gh api repos/hikariming/ghfind/git/ref/heads/main --jq .object.sha)" = "$RELEASE_SHA"
           test "$CLOUDFLARE_ACCOUNT_ID" = "8f19bebe359e4ec1a24c68c5f49c1584"
       - run: pnpm install --frozen-lockfile
+      - name: Apply approved core D1 migrations before deploying readers
+        # The Astro/API Workers read the core database directly. Keep its
+        # indexes available even when the independent Feed release is delayed.
+        # Render only hash-approved files; do not apply any Feed migrations.
+        run: |
+          set -euo pipefail
+          release_config="$(node scripts/feed-platform-schema-release.mjs production "$RUNNER_TEMP/apps-production-schema")"
+          pnpm exec wrangler d1 migrations apply ghfind --remote --config "$release_config"
       - name: Deploy ghfind-coord
         run: pnpm --filter @ghfind/coord exec wrangler deploy --env production --tag "production-$RELEASE_SHA"
       - name: Deploy ghfind-web

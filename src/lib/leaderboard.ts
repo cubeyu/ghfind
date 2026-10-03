@@ -1,3 +1,4 @@
+import { getCloudflareContext } from "@opennextjs/cloudflare";
 import {
   getHeatLeaderboard,
   getLeaderboard,
@@ -7,6 +8,8 @@ import {
   type LeaderboardWindow,
 } from "@/lib/db";
 import {
+  acquireLeaderboardRefresh,
+  LEADERBOARD_FRESH_MS,
   getCachedLeaderboard,
   setCachedLeaderboard,
   type LeaderboardCacheView,
@@ -45,24 +48,45 @@ export async function getLeaderboardCached(
   view: LeaderboardCacheView = "trending",
   window: LeaderboardWindow = "all",
 ): Promise<{ entries: LeaderboardEntry[]; cached: boolean }> {
-  const cached = await getCachedLeaderboard(view, window);
-  if (cached) return { entries: cached, cached: true };
-
   const key = `${view}:${window}`;
-  const existing = inflight.get(key);
-  if (existing) return existing;
-
-  const run = (async () => {
-    const entries = await fetchers[view](LEADERBOARD_LIMIT, window);
-    // The db fetchers degrade to [] on error — never cache that, or one Turso
-    // hiccup blanks every board for a full TTL (developers/rank do the same).
-    if (entries.length > 0) await setCachedLeaderboard(entries, view, window);
-    return { entries, cached: false };
-  })();
-  inflight.set(key, run);
-  try {
-    return await run;
-  } finally {
-    inflight.delete(key);
+  const cached = await getCachedLeaderboard(view, window);
+  if (cached && Date.now() - cached.at < LEADERBOARD_FRESH_MS) {
+    return { entries: cached.entries, cached: true };
   }
+
+  const refresh = () => {
+    const existing = inflight.get(key);
+    if (existing) return existing;
+    const run = (async () => {
+      try {
+        if (cached && !(await acquireLeaderboardRefresh(view, window))) {
+          return { entries: cached.entries, cached: true };
+        }
+        const entries = await fetchers[view](LEADERBOARD_LIMIT, window);
+        if (entries.length > 0) await setCachedLeaderboard(entries, view, window);
+        return entries.length || !cached
+          ? { entries, cached: false }
+          : { entries: cached.entries, cached: true };
+      } catch (error) {
+        if (cached) return { entries: cached.entries, cached: true };
+        throw error;
+      }
+    })();
+    inflight.set(key, run);
+    void run.finally(() => inflight.delete(key)).catch(() => {});
+    return run;
+  };
+
+  if (cached) {
+    // Keep background work alive on Workers. Outside a Worker request (tests,
+    // scripts, other hosts), await it rather than starting an untracked task.
+    try {
+      const ctx = getCloudflareContext().ctx;
+      if (ctx) {
+        ctx.waitUntil(refresh());
+        return { entries: cached.entries, cached: true };
+      }
+    } catch { /* no Worker request context */ }
+  }
+  return refresh();
 }

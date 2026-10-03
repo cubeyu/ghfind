@@ -4,7 +4,9 @@
  * same bindings come from the `cloudflare:workers` env import.
  */
 import { env } from "cloudflare:workers";
+import { requestContext } from "../request-context";
 
 export function getCloudflareContext() {
-  return { env };
+  const request = requestContext.getStore();
+  return { env, ctx: request ? { waitUntil: request.waitUntil } : undefined };
 }
