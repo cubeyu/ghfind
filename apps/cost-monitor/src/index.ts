@@ -1,6 +1,7 @@
 import { DurableObject } from "cloudflare:workers";
 import { acknowledge, compact, DEFAULT_RULES, emptyState, evaluate, HISTORY_TTL_MS, MAX_STATE_BYTES, MAX_WINDOWS, MAX_WINDOW_BYTES, recipients, STATE_TTL_MS, WINDOW_MS, type Frame, type State } from "./engine";
 import { billable, collect } from "./metrics";
+import { businessPoints, probe, summarize, type BusinessCount } from "./business";
 interface MonitorEnv extends Env {
   CF_MONITOR_API_TOKEN: string;
   MONITOR_ADMIN_TOKEN: string;
@@ -16,7 +17,16 @@ export class CostMonitor extends DurableObject<MonitorEnv> {
     ctx.storage.sql.exec("CREATE TABLE IF NOT EXISTS monitor_state (id INTEGER PRIMARY KEY CHECK(id=1), data TEXT NOT NULL, expires_at INTEGER NOT NULL)");
     ctx.storage.sql.exec("CREATE TABLE IF NOT EXISTS windows (at INTEGER PRIMARY KEY, data TEXT NOT NULL, expires_at INTEGER NOT NULL)");
     ctx.storage.sql.exec("CREATE INDEX IF NOT EXISTS windows_expiry ON windows(expires_at)");
+    ctx.storage.sql.exec("CREATE TABLE IF NOT EXISTS business_windows (at INTEGER NOT NULL,feature TEXT NOT NULL,total INTEGER NOT NULL,failed INTEGER NOT NULL,slow INTEGER NOT NULL,PRIMARY KEY(at,feature))");
     ctx.storage.sql.exec("CREATE TABLE IF NOT EXISTS lease (id INTEGER PRIMARY KEY CHECK(id=1), owner TEXT NOT NULL, expires_at INTEGER NOT NULL)");
+  }
+  async recordBusiness(rows:BusinessCount[]):Promise<void> {
+    const now=Date.now();
+    this.ctx.storage.sql.exec("DELETE FROM business_windows WHERE at<?",now-HISTORY_TTL_MS);
+    for(const r of rows.slice(0,192)) {
+      if(r.at<now-HISTORY_TTL_MS || r.at>now+WINDOW_MS)continue;
+      this.ctx.storage.sql.exec("INSERT INTO business_windows VALUES(?,?,?,?,?) ON CONFLICT(at,feature) DO UPDATE SET total=total+excluded.total,failed=failed+excluded.failed,slow=slow+excluded.slow",r.at,r.feature,r.total,r.failed,r.slow);
+    }
   }
   private load(now=Date.now()): State {
     const row=this.ctx.storage.sql.exec<{data:string}>("SELECT data FROM monitor_state WHERE id=1 AND expires_at>?",now).toArray()[0];
@@ -29,6 +39,7 @@ export class CostMonitor extends DurableObject<MonitorEnv> {
     this.ctx.storage.sql.exec("INSERT INTO monitor_state VALUES(1,?,?) ON CONFLICT(id) DO UPDATE SET data=excluded.data,expires_at=excluded.expires_at",data,now+STATE_TTL_MS);
   }
   private prune(now:number):void {
+    this.ctx.storage.sql.exec("DELETE FROM business_windows WHERE at<?",now-HISTORY_TTL_MS);
     this.ctx.storage.sql.exec("DELETE FROM windows WHERE expires_at<=?",now);
     this.ctx.storage.sql.exec("DELETE FROM windows WHERE at < COALESCE((SELECT at FROM windows ORDER BY at DESC LIMIT 1 OFFSET ?),-1)",MAX_WINDOWS-1);
     this.ctx.storage.sql.exec("DELETE FROM monitor_state WHERE expires_at<=?",now);
@@ -65,8 +76,9 @@ export class CostMonitor extends DurableObject<MonitorEnv> {
     for(const to of targets){
       const pending=state.outbox.filter(n=>!n.delivered.includes(to));
       if(!pending.length)continue;
-      const subject=`[ghfind${this.env.E2E_ENABLED==="1"?" E2E 演练":""}] ${pending.some(n=>n.severity>=2)?"严重 ":""}${TITLES[pending[0].kind]}（${pending.length} 项）`;
-      const text=[this.env.E2E_ENABLED==="1"?"这是告警链路演练，包含模拟异常，不代表生产数据库发生事故。":"这是自动用量监控通知。",...pending.map(n=>`${TITLES[n.kind]}\n${n.text}`),`Cloudflare 排查入口：https://dash.cloudflare.com/${this.env.CF_ACCOUNT_ID}/billing/billable-usage`,"实时指标异常持续期间每 30 分钟提醒；日账单每 6 小时重新对账。连续两个有效正常窗口或账单对账结果后通知恢复。"].join("\n\n");
+      pending.sort((a,b)=>b.severity-a.severity);
+      const subject=`[ghfind${this.env.E2E_ENABLED==="1"?" E2E 演练":""}] ${pending.some(n=>n.severity>=2)?"严重 ":""}${TITLES[pending[0].kind]}：${pending[0].text.split("\n")[0].slice(0,65)}（${pending.length} 项）`;
+      const text=[this.env.E2E_ENABLED==="1"?"这是告警链路演练，包含模拟异常，不代表生产数据库发生事故。":"这是 ghfind 费用、性能和关键功能监控通知。",...pending.map(n=>`${TITLES[n.kind]}\n${n.text}`),`Cloudflare 排查入口：https://dash.cloudflare.com/${this.env.CF_ACCOUNT_ID}/billing/billable-usage`,"实时指标异常持续期间每 30 分钟提醒；日账单每 6 小时重新对账。连续两个有效正常窗口或账单对账结果后通知恢复。"].join("\n\n");
       const hour=Math.floor(now/3600_000),day=Math.floor(now/86400_000);
       const budget=state.mailBudget;
       if(budget.hour!==hour){budget.hour=hour;budget.hourly=0;}
@@ -78,7 +90,7 @@ export class CostMonitor extends DurableObject<MonitorEnv> {
         let id="captured";
         if(this.env.E2E_ENABLED!=="1" || this.env.E2E_CAPTURE_MAIL!=="1") {
           const escaped=text.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
-          const result=await this.env.EMAIL.send({from:{email:this.env.ALERT_FROM,name:"ghfind 用量监控"},to,subject,text,html:`<pre style="white-space:pre-wrap">${escaped}</pre>`});
+          const result=await this.env.EMAIL.send({from:{email:this.env.ALERT_FROM,name:"ghfind 故障与费用监控"},to,subject,text,html:`<pre style="white-space:pre-wrap">${escaped}</pre>`});
           id=result.messageId;
         }
         state.mailReceipts.push({at:now,messageId:id});
@@ -106,6 +118,9 @@ export class CostMonitor extends DurableObject<MonitorEnv> {
       let frame:Frame;
       try {
         frame=await collect(config,now);
+        await this.recordBusiness([]);
+        const business=this.ctx.storage.sql.exec<BusinessCount & Record<string,SqlStorageValue>>("SELECT * FROM business_windows WHERE at=?",frame.at).toArray();
+        frame.points.push(...businessPoints(business),...await probe(now));
         if(!frame.points.some(p=>p.product==="Workers" && p.amount>0))throw new Error("Closed telemetry window has no activity; ingestion may be delayed");
         if(now-state.lastBilling>=6*3600_000){
           try{frame.points.push(...await billable(config,now));state.lastBilling=now;}catch{frame.errors.push("Billing: reconciliation unavailable");}
@@ -142,9 +157,20 @@ export class CostMonitor extends DurableObject<MonitorEnv> {
     if(this.env.E2E_ENABLED!=="1")throw new Error("E2E disabled");
     const owner=this.lease(Date.now());if(!owner)return {status:"busy"};
     try {
-      if(phase==="reset"){this.ctx.storage.sql.exec("DELETE FROM monitor_state");this.ctx.storage.sql.exec("DELETE FROM windows");return {status:"reset"};}
+      if(phase==="reset"){this.ctx.storage.sql.exec("DELETE FROM monitor_state");this.ctx.storage.sql.exec("DELETE FROM windows");this.ctx.storage.sql.exec("DELETE FROM business_windows");return {status:"reset"};}
       const state=this.load();const base=Math.floor(Date.now()/86400_000)*86400_000;
-      const make=(i:number,efficiency:number):Frame=>({at:base+i*WINDOW_MS,healthy:["D1","Workers","R2","KV"],errors:[],points:[{key:"D1:e2e:read",product:"D1",resource:"E2E synthetic database",label:"模拟读放大",amount:efficiency*100,operations:100,unit:"rows",usd:efficiency*100*1e-9,efficiency,efficiencyWarning:50_000,efficiencyCritical:200_000,minAmount:100_000}]});
+      const make=(i:number,efficiency:number):Frame=>({at:base+i*WINDOW_MS,healthy:["D1","Workers","R2","KV","DO","Queues"],errors:[],points:[{key:"D1:e2e:read",product:"D1",resource:"E2E synthetic database",label:"模拟读放大",amount:efficiency*100,operations:100,unit:"rows",usd:efficiency*100*1e-9,efficiency,efficiencyWarning:50_000,efficiencyCritical:200_000,minAmount:100_000}]});
+      if(phase==="business"){
+        const at=Math.floor(Date.now()/WINDOW_MS)*WINDOW_MS;
+        await this.recordBusiness([{at,feature:"roast",total:2,failed:1,slow:0}]);
+        await this.recordBusiness([{at,feature:"roast",total:3,failed:0,slow:1}]);
+        const rows=this.ctx.storage.sql.exec<BusinessCount & Record<string,SqlStorageValue>>("SELECT * FROM business_windows WHERE at=?",at).toArray();
+        const points=businessPoints(rows);
+        evaluate(state,{at,points,healthy:[],errors:[]},Date.now());
+        const severity=state.metrics["Service:roast:errors"].severity;
+        this.prune(Date.now()+HISTORY_TTL_MS+WINDOW_MS);
+        return {status:"business",rows,severity,remaining:this.ctx.storage.sql.exec<{n:number}>("SELECT COUNT(*) AS n FROM business_windows").one().n};
+      }
       if(phase==="baseline")for(let i=1;i<=14;i++){const f=make(i,200);evaluate(state,f,base+i*WINDOW_MS);this.storeFrame(f,Date.now());}
       else if(phase==="breach"||phase==="partial"||phase==="duplicate"){const f=make(15,380_000);evaluate(state,f,base+15*WINDOW_MS);this.storeFrame(f,Date.now());}
       else if(phase==="reminder"){const f=make(22,380_000);evaluate(state,f,base+22*WINDOW_MS);this.storeFrame(f,Date.now());}
@@ -172,13 +198,17 @@ async function authorized(request:Request,secret:string):Promise<boolean> {
   return crypto.subtle.timingSafeEqual(a,b);
 }
 export default {
+  async tail(events,env):Promise<void> {
+    const rows=summarize(events);
+    if(rows.length)await env.MONITOR.getByName("account").recordBusiness(rows);
+  },
   async scheduled(_controller,env):Promise<void> {const result=await env.MONITOR.getByName("account").tick();if(result.status==="degraded")throw new Error("Cost monitor degraded");},
   async fetch(request,env):Promise<Response> {
     if(!await authorized(request,env.MONITOR_ADMIN_TOKEN))return json({error:"Unauthorized"},401);
     const path=new URL(request.url).pathname,stub=env.MONITOR.getByName("account");
     if(path==="/health"&&request.method==="GET")return json(await stub.health());
     if(path==="/run"&&request.method==="POST")return json(await stub.tick());
-    if(env.E2E_ENABLED==="1"&&request.method==="POST"&&/^\/test\/(reset|baseline|breach|partial|duplicate|reminder|recovery|retention|rate-limit)$/.test(path))return json(await stub.exercise(path.split("/").at(-1)!));
+    if(env.E2E_ENABLED==="1"&&request.method==="POST"&&/^\/test\/(reset|business|baseline|breach|partial|duplicate|reminder|recovery|retention|rate-limit)$/.test(path))return json(await stub.exercise(path.split("/").at(-1)!));
     return json({error:"Not found"},404);
   },
 } satisfies ExportedHandler<MonitorEnv>;

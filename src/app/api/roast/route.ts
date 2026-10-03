@@ -874,6 +874,7 @@ export async function POST(req: NextRequest) {
       const legacy = await legacyRoastResponse(username, lang, requestId, reqT0);
       if (legacy) return legacy;
     }
+    if (isDefault) logRoastSummary({ path, source: "generate", ok: false, stage: "configuration", kind: "no_llm_configured" });
     return NextResponse.json({ error: "no_llm_configured", useByoKey: true }, { status: 400 });
   }
   const { config } = resolved;

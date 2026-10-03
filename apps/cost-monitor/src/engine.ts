@@ -8,7 +8,7 @@ export const MAX_WINDOWS = 288;
 export const MAX_STATE_BYTES = 96 * 1024;
 export const MAX_WINDOW_BYTES = 48 * 1024;
 export const REMINDER_MS = 30 * 60_000;
-export type Product = "D1" | "Workers" | "R2" | "KV" | "DO" | "Queues" | "Billing" | "Monitor";
+export type Product = "D1" | "Workers" | "R2" | "KV" | "DO" | "Queues" | "Billing" | "Monitor" | "Service";
 export interface Point {
   key: string;
   product: Product;
@@ -23,6 +23,8 @@ export interface Point {
   efficiencyWarning?: number;
   efficiencyCritical?: number;
   minAmount?: number;
+  minOperations?: number;
+  observedAt?: number;
   gauge?: boolean;
   denominator?: string;
   relative?: boolean;
@@ -92,7 +94,7 @@ export function evaluate(state: State, frame: Frame, now: number, rules = DEFAUL
   }
   const points = [...frame.points];
   const priced = frame.points.filter(p => !p.diagnostic && p.product !== "Billing");
-  if (["D1", "Workers", "R2", "KV"].every(p => frame.healthy.includes(p as Product))) points.push({ key: "account:burn", product: "Monitor", resource: "account", label: "账户用量消耗速度", amount: priced.reduce((s,p) => s+p.usd,0)*12, operations: 1, unit: "USD/hour", usd: priced.reduce((s,p) => s+p.usd,0) });
+  if (["D1", "Workers", "R2", "KV", "DO", "Queues"].every(p => frame.healthy.includes(p as Product))) points.push({ key: "account:burn", product: "Monitor", resource: "account", label: "已覆盖产品的用量消耗速度（不含外部 LLM 等费用）", amount: priced.reduce((s,p) => s+p.usd,0)*12, operations: 1, unit: "USD/hour", usd: priced.reduce((s,p) => s+p.usd,0) });
   // Keys measured in this window; the zero points added below for vanished
   // metrics are bookkeeping and must not pin those metrics against eviction.
   const measured = new Set(points.map(p => p.key));
@@ -122,13 +124,13 @@ export function evaluate(state: State, frame: Frame, now: number, rules = DEFAUL
     if (m.lastSeen === frame.at) continue; // Source correction can fill missing metrics, never train an existing one twice.
     if (m.lastSeen && frame.at-m.lastSeen>WINDOW_MS && p.product!=="Billing") {m.bad=0;m.good=0;}
     const value = p.efficiency ?? p.amount;
-    const enough = (p.gauge || p.operations >= 20) && p.amount >= (p.minAmount ?? 100);
+    const enough = (p.gauge || p.operations >= (p.minOperations ?? 20)) && p.amount >= (p.minAmount ?? 100);
     let level = 0;
     if (enough && p.efficiencyWarning !== undefined && value >= p.efficiencyWarning) level = 1;
     if (enough && p.efficiencyCritical !== undefined && value >= p.efficiencyCritical) level = 2;
     const ratio = m.baseline > 0 ? value / m.baseline : 0;
-    if (enough && m.samples >= 12 && p.relative !== false && ratio >= 3) level = Math.max(level, 1);
-    if (enough && m.samples >= 12 && p.relative !== false && ratio >= 10) level = 2;
+    if (enough && (p.diagnostic || p.usd * 12 >= 0.05) && m.samples >= 12 && p.relative !== false && ratio >= 3) level = Math.max(level, 1);
+    if (enough && (p.diagnostic || p.usd * 12 >= 0.5) && m.samples >= 12 && p.relative !== false && ratio >= 10) level = 2;
     if (p.key === "account:burn") level = value >= rules.hourlyCritical ? 2 : value >= rules.hourlyWarning ? 1 : 0;
     if (p.product === "Billing") level = value >= rules.dailyWarning * 3 ? 2 : value >= rules.dailyWarning ? 1 : 0;
     if (level) {
@@ -155,12 +157,12 @@ export function evaluate(state: State, frame: Frame, now: number, rules = DEFAUL
     if (kind && !state.outbox.some(n => n.key === p.key)) {
       if (state.outbox.length >= 16) throw new Error("Notification outbox limit exceeded");
       state.outbox.push({ id: `${p.key}:${m.incident}:${kind}:${Math.floor(now/REMINDER_MS)}`, key: p.key, kind, severity: m.severity,
-        text: `${p.product} / ${p.resource} / ${p.label}\n指标：${p.amount.toLocaleString("en-US")} ${p.unit}；操作数：${p.operations}\n${p.efficiency === undefined ? "" : `平均每次${p.denominator ?? "操作"}：${p.efficiency.toFixed(2)} ${p.unit}\n`}健康基线：${m.baseline.toFixed(2)}；倍数：${ratio.toFixed(2)}\n窗口开始（UTC）：${new Date(frame.at).toISOString()}\n${p.product === "Billing" ? `已上报日费用：$${p.amount.toFixed(4)}；对应日期：${p.resource}。账单可能延迟或调整，每 6 小时重新对账。` : `本窗口按超额单价估算消耗：$${p.usd.toFixed(4)}；未扣套餐额度，非最终账单。${p.gauge ? "存储按 GB-month 折算。" : ""}`}\n请检查查询计划、缓存、批处理、重试和近期部署。`,
+        text: describeNotice(p, m, frame.at, ratio),
         delivered: [], attempts: 0, expiresAt: now + STATE_TTL_MS });
     }
   }
   state.lastFrame = frame.at;
-  if (["D1", "Workers", "R2", "KV"].every(p => frame.healthy.includes(p as Product)) && !frame.errors.length) state.lastSuccess = now;
+  if (["D1", "Workers", "R2", "KV", "DO", "Queues"].every(p => frame.healthy.includes(p as Product)) && !frame.errors.length) state.lastSuccess = now;
   state.lastError = frame.errors.length ? frame.errors.join("; ").slice(0,500) : null;
 }
 export function acknowledge(state: State, notice: Notice, now: number): void {
@@ -169,4 +171,23 @@ export function acknowledge(state: State, notice: Notice, now: number): void {
   state.outbox = state.outbox.filter(n => n.id !== notice.id);
   state.recentDelivery.push({ at: now, id: notice.id, kind: notice.kind, recipients: notice.delivered.length });
   compact(state, now);
+}
+
+const RESOURCE_NAMES: Record<string,string> = {
+  "e4695b85cce24b3d843c4744865ed203": "共享协调缓存（ghfind-coord / KeyValue）",
+  "60d45096-bfe7-4de1-8b85-c1b66a466b0d": "主数据库 ghfind",
+  "9c4ac13a-4c90-40a8-9d56-d7141f864bbf": "Feed 数据库",
+  "f7a7299eef224d899c21121c1979be32": "应用缓存 ghfind-cache",
+  account: "Cloudflare 账户",
+};
+function money(n:number):string { return n>0 && n<0.000001 ? "<$0.000001" : `$${n.toFixed(6)}`; }
+export function describeNotice(p:Point,m:MetricState,at:number,ratio:number):string {
+  const category = p.product==="Service" ? "关键功能故障" : p.key.endsWith(":errors") ? "运行错误" : p.product==="Billing" || p.key==="account:burn" ? "账单风险" : "性能 / 用量异常";
+  const time = (n:number)=>new Date(n+8*3600_000).toISOString().slice(0,16).replace("T"," ");
+  const advice = p.product==="Service" ? "优先检查该功能的部署、上游服务和生成结果日志；故障可能直接影响用户。" : p.product==="D1" ? "检查查询计划、索引、缓存命中与重复查询。" : p.product==="DO" || p.product==="KV" ? "检查缓存命中、协调对象轮询、重试与批量读写。" : p.product==="Workers" ? "检查异常日志、CPU 耗时、循环与近期部署。" : "检查流量变化、重复操作及近期部署。";
+  const evidence = p.efficiency===undefined ? "" : `\n平均每次${p.denominator??"操作"}：${p.efficiency.toFixed(4)} ${p.unit}${p.denominator==="账户 Worker 调用（归一化参考）"?"；不是该资源实际查询次数":""}`;
+  const baseline = p.relative===false ? "" : `\n健康参考：${m.baseline.toFixed(4)}；相对倍数：${ratio.toFixed(2)}（倍数不能单独代表费用风险）`;
+  const cost = p.product==="Billing" ? `已上报日费用：$${p.amount.toFixed(4)}；对应日期：${p.resource}。账单可能延迟或调整，每 6 小时重新对账。` : p.product==="Service" || p.key.endsWith(":errors") ? "这是功能 / 错误告警，不按费用大小降级。" : `本窗口套餐外单价估算：${money(p.usd)}；若持续同速约 ${money(p.usd*12)}/小时、${money(p.usd*288)}/天。未扣套餐额度，非最终账单。`;
+  const period=p.observedAt ? `探测时间（北京时间）：${time(p.observedAt)}` : `北京时间：${time(at)} 至 ${time(at+WINDOW_MS)}；UTC 开始：${new Date(at).toISOString()}`;
+  return `【${category}】${RESOURCE_NAMES[p.resource]??p.resource} / ${p.label}\n影响对象：${RESOURCE_NAMES[p.resource]??p.resource}（${p.product}）\n${m.severity?"需要排查":"已连续两个有效窗口恢复正常"}\n观测值：${p.amount.toLocaleString("en-US")} ${p.unit}；${p.denominator??"操作"}数：${p.operations}${evidence}${baseline}\n${period}\n${cost}\n建议：${advice}`;
 }

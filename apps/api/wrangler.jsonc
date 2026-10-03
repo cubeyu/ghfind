@@ -4,6 +4,7 @@
   // Handlers are the Next app's route modules (src/app/api) and src/lib, so
   // bindings and secrets must match the legacy Worker's for each env.
   "name": "ghfind-api",
+      "tail_consumers": [{ "service": "ghfind-cost-monitor" }],
   "account_id": "8f19bebe359e4ec1a24c68c5f49c1584",
   "main": "src/index.ts",
   "compatibility_date": "2026-08-06",
@@ -79,6 +80,7 @@
     },
     "production": {
       "name": "ghfind-api",
+      "tail_consumers": [{ "service": "ghfind-cost-monitor" }],
       "workers_dev": true,
       "d1_databases": [
         { "binding": "GHFIND_D1", "database_name": "ghfind", "database_id": "60d45096-bfe7-4de1-8b85-c1b66a466b0d" },
