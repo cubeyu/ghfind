@@ -49,9 +49,11 @@ import {
   bumpCampaignLeaderboardRevision,
   clearCachedReactionCounts,
   getCachedLanguageLadder,
+  getCachedSimilarUsernames,
   getCachedReactionCounts,
   releaseLookupGate,
   setCachedLanguageLadder,
+  setCachedSimilarUsernames,
   setCachedReactionCounts,
   tryAcquireLookupGate,
 } from "./redis";
@@ -788,6 +790,8 @@ function ensureSchema(db: Client): Promise<void> {
           // index-only, without touching the table.
           `CREATE INDEX IF NOT EXISTS idx_account_lookup_limits_counted_user
              ON account_lookup_limits(last_counted_at, username)`,
+          `CREATE INDEX IF NOT EXISTS idx_account_lookup_limits_user_counted
+             ON account_lookup_limits(username, last_counted_at)`,
           // Event cohorts are labels over the canonical score population, not a
           // second score store. One account can join many campaigns while its
           // latest score/profile continues to live in `scores`.
@@ -985,6 +989,8 @@ function ensureSchema(db: Client): Promise<void> {
       ]) {
         await addColumnIfMissing(db, "scores", col);
       }
+      await db.execute(`CREATE INDEX IF NOT EXISTS idx_scores_public_order
+        ON scores(hidden, score_version, final_score DESC, scanned_at DESC)`);
       await addColumnIfMissing(
         db,
         "public_scan_commit_repo_facts",
@@ -5073,27 +5079,33 @@ export async function getLeaderboard(
   try {
     await ensureSchema(db);
     const { recentCutoff, activeOnly } = resolveLeaderboardWindow(window, Date.now());
+    // Select the score-ordered population before enriching it with visit counts.
+    // EXISTS keeps the active-window filter ahead of LIMIT without aggregating
+    // every visitor in the window. MATERIALIZED bounds the subsequent joins.
     const res = await db.execute({
-      sql: `SELECT s.username, s.display_name, s.avatar_url, s.profile_url,
-                   s.final_score, s.tier, s.tags, s.score_version,
+      sql: `WITH candidates AS MATERIALIZED (
+              SELECT s.username, s.display_name, s.avatar_url, s.profile_url,
+                     s.final_score, s.tier, s.tags, s.score_version, s.scanned_at
+              FROM scores AS s
+              WHERE s.hidden = 0
+                AND ${canonicalPublicScorePredicate("s")}
+                AND s.final_score >= ?
+                ${activeOnly ? `AND EXISTS (
+                  SELECT 1 FROM account_lookup_limits AS l
+                  WHERE l.username = s.username AND l.last_counted_at >= ?
+                )` : ""}
+              ORDER BY s.final_score DESC, s.scanned_at DESC
+              LIMIT ?
+            )
+            SELECT s.*,
                    MAX(COALESCE(stats.lookup_count, 0), ${MIN_RECORDED_LOOKUP_COUNT}) AS lookup_count,
-                   COALESCE(recent.recent_lookup_count, 0) AS recent_lookup_count,
+                   (SELECT COUNT(*) FROM account_lookup_limits AS l
+                    WHERE l.username = s.username AND l.last_counted_at >= ?) AS recent_lookup_count,
                    stats.last_lookup_at AS last_lookup_at
-            FROM scores AS s
+            FROM candidates AS s
             LEFT JOIN account_stats AS stats ON stats.username = s.username
-            LEFT JOIN (
-              SELECT username, COUNT(*) AS recent_lookup_count
-              FROM account_lookup_limits
-              WHERE last_counted_at >= ?
-              GROUP BY username
-            ) AS recent ON recent.username = s.username
-            WHERE s.hidden = 0
-              AND ${canonicalPublicScorePredicate("s")}
-              AND s.final_score >= ?
-            ${activeOnly ? "AND recent.recent_lookup_count > 0" : ""}
-            ORDER BY s.final_score DESC, s.scanned_at DESC
-            LIMIT ?`,
-      args: [recentCutoff, minScore, limit],
+            ORDER BY s.final_score DESC, s.scanned_at DESC`,
+      args: [minScore, ...(activeOnly ? [recentCutoff] : []), limit, recentCutoff],
     });
     const now = Date.now();
     return res.rows.map((r) => toLeaderboardEntry(r as unknown as LeaderboardRow, now));
@@ -6559,10 +6571,67 @@ const SIMILAR_POOL = 300;
  * Developers most similar to `username`: pre-filter by a score band (uses the
  * final_score index — the cost-safe lever), then rank that pool by 6-dim profile
  * distance and return the closest `limit`. The target's score/profile are passed
- * in (the caller already has them) to avoid a second lookup. Returns [] on any
- * failure or when the DB is unconfigured.
+ * in (the caller already has them) to avoid a second lookup. Cache ranked
+ * membership for one hour, then rehydrate selected users by primary key on
+ * hits to respect current visibility. Returns [] on failure/unconfigured DB.
  */
+const similarInflight = new Map<string, Promise<LeaderboardEntry[]>>();
+
 export async function getSimilarAccounts(
+  username: string,
+  finalScore: number,
+  subScores: SubScores,
+  limit = 6,
+): Promise<LeaderboardEntry[]> {
+  const db = getClient();
+  if (!db || limit <= 0) return [];
+  // Include every ranking input so re-scoring cannot reuse another profile's
+  // recommendation. Sorting keys makes semantically identical inputs share it.
+  const key = createHash("sha256").update(JSON.stringify([
+    SCORE_CACHE_VERSION, username.toLowerCase(), finalScore, limit,
+    Object.entries(subScores).sort(([a], [b]) => a.localeCompare(b)),
+  ])).digest("hex");
+  const existing = similarInflight.get(key);
+  if (existing) return existing;
+  const run = (async () => {
+    try {
+      const usernames = bypassGeneratedCaches() ? null : await getCachedSimilarUsernames(key);
+      if (usernames?.length) {
+        await ensureSchema(db);
+        const res = await db.execute({
+          sql: `WITH selected(username) AS (VALUES ${usernames.map(() => "(?)").join(",")})
+                SELECT s.username, s.display_name, s.avatar_url, s.profile_url,
+                       s.final_score, s.tier, s.tags, s.score_version,
+                       MAX(COALESCE(stats.lookup_count, 0), ${MIN_RECORDED_LOOKUP_COUNT}) AS lookup_count
+                FROM selected
+                CROSS JOIN scores AS s ON s.username = selected.username
+                LEFT JOIN account_stats AS stats ON stats.username = s.username
+                WHERE s.hidden = 0 AND ${canonicalPublicScorePredicate("s")}`,
+          args: usernames,
+        });
+        const entries = new Map(res.rows.map(row => {
+          const entry = toLeaderboardEntry(row as unknown as LeaderboardRow);
+          return [entry.username, entry] as const;
+        }));
+        return usernames.flatMap(name => entries.has(name) ? [entries.get(name)!] : []);
+      }
+      const entries = await getSimilarAccountsUncached(username, finalScore, subScores, limit);
+      // DB failures also return []; never pin a transient failure in the cache.
+      if (entries.length && !bypassGeneratedCaches()) {
+        await setCachedSimilarUsernames(key, entries.map(entry => entry.username));
+      }
+      return entries;
+    } catch (error) {
+      console.error("getSimilarAccounts cache failed:", error);
+      return [];
+    }
+  })();
+  similarInflight.set(key, run);
+  try { return await run; }
+  finally { similarInflight.delete(key); }
+}
+
+async function getSimilarAccountsUncached(
   username: string,
   finalScore: number,
   subScores: SubScores,
