@@ -150,6 +150,12 @@ export function evaluate(state: State, frame: Frame, now: number, rules = DEFAUL
     }
     m.lastSeen = frame.at; m.expiresAt = now + STATE_TTL_MS;
     let kind: Notice["kind"] | undefined;
+    if (!m.severity && m.notifiedSeverity && p.product === "Service") {
+      // Healthy business windows are bookkeeping, not another fault email.
+      m.notifiedSeverity = 0;
+      m.lastNotified = now;
+      state.outbox = state.outbox.filter(n => n.key !== p.key);
+    }
     if (!m.severity && m.notifiedSeverity) kind = "recovery";
     else if (m.severity && !m.notifiedSeverity) kind = "open";
     else if (m.severity > m.notifiedSeverity) kind = "escalation";

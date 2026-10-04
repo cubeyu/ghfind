@@ -1,6 +1,6 @@
 import {describe,it,expect} from "vitest";
 import {summarize,businessPoints,probe} from "../business";
-import {emptyState,evaluate,WINDOW_MS} from "../engine";
+import {emptyState,evaluate,acknowledge,WINDOW_MS} from "../engine";
 function trace(path:string,status=200,summary?:Record<string,unknown>):TraceItem {
   return {scriptName:"ghfind-api",eventTimestamp:1_800_000_000_000,event:{request:{url:`https://ghfind.com${path}`,method:"GET",headers:{}},response:{status}},logs:summary?[{message:["roast.summary",JSON.stringify(summary)]}]:[],exceptions:[],outcome:"ok",wallTime:100} as unknown as TraceItem;
 }
@@ -35,4 +35,16 @@ describe("critical business telemetry",()=>{
     evaluate(s,frame(15,426,.247),at+15*WINDOW_MS);expect(s.outbox).toEqual([]);
     evaluate(s,frame(16,100_000_000,1000),at+16*WINDOW_MS);expect(s.outbox[0].severity).toBe(2);
   });
+});
+
+it("silently clears recovered business incidents instead of emailing zero failures",()=>{
+  const s=emptyState(),at=1_800_000_000_000;
+  const run=(i:number,failed:number)=>evaluate(s,{at:at+i*WINDOW_MS,points:businessPoints([{at,feature:"roast",total:1,failed,slow:0}]),healthy:[],errors:[]},at+i*WINDOW_MS);
+  run(0,1);acknowledge(s,s.outbox[0],at);run(1,0);run(2,0);
+  expect(s.outbox).toEqual([]);expect(s.metrics["Service:roast:errors"].notifiedSeverity).toBe(0);
+  run(3,1);expect(s.outbox[0].kind).toBe("open");
+});
+it("ignores disconnected streaming clients even when their logs report failure",()=>{
+  const item=trace("/api/roast",200,{path:"default",source:"generate",ok:false});
+  expect(summarize([{...item,outcome:"clientDisconnected"}])).toEqual([]);
 });
