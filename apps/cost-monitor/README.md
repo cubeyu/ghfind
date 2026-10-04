@@ -37,8 +37,8 @@ polls. Each time window is one aggregated JSON row. Raw SQL, parameters, user ID
 request bodies and raw billing line items are not retained.
 
 - Windows: 24-hour logical TTL, at most 288 rows, at most 48 KiB per row.
-- State/baselines: 7-day TTL, at most 256 metrics and 96 KiB total; inactive baselines can be evicted earlier.
-- Outbox: at most 16 aggregate notices, 7-day TTL; delivery receipts: last 12,
+- State/baselines: 7-day TTL, at most 256 metrics and 192 KiB total; inactive baselines can be evicted earlier.
+- Outbox: at most 64 aggregate notices, 7-day TTL; delivery receipts: last 12,
   at most 24 hours. Recipient addresses are private configuration.
 - Cleanup uses indexed expiry and the window primary key at every collection;
   an alarm also reclaims expired rows when the cron stops (daily cleanup cadence).
@@ -95,3 +95,5 @@ API production 通过 Tail Worker 向监控写入固定功能名的五分钟聚�
 每五分钟额外 GET 首页及 torvalds 的大卡/迷你卡，检查 HTTP 和 Content-Type；连续两个窗口失败预警，连续两个有效正常窗口恢复。探测不执行新的 GitHub 分析或付费 LLM 生成。探测不证明每个用户卡片内容都正确，也不验证完整锐评内容质量。计数只保存功能、时间和数量，不存用户名、URL、请求体、原始日志或密钥；24 小时清理。Tail 可能重复投递，计数是观测数量，不是财务账单。
 
 发布顺序要求先部署监控 Tail consumer，再部署 API producer。两个生产 workflow 均仅在 main CI 成功后发布；API workflow 增加 consumer 先行部署以避免首次上线竞争。现有邮件收件人私密配置保持不变。
+
+普通用量、性能、运行错误、持续提醒及非业务恢复信息改为每小时聚合一封；关键功能严重错误、账户严重消耗速度和严重日费用首次发生或升级时绕过摘要等待。部分收件人失败保留重试，已接受的摘要收件人不重复发送。正常排队等待摘要不算监控故障；独立 GitHub 心跳检查每小时运行。关键功能恢复静默，客户端断开不计业务故障。

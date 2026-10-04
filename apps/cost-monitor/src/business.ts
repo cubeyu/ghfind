@@ -8,6 +8,7 @@ export function summarize(events:TraceItem[]):BusinessCount[] {
     let path:string;try{path=new URL(item.event.request.url).pathname;}catch{continue;}
     const feature= /^\/api\/(card|badge|material-card)\//.test(path)?"card":path==="/api/roast"?"roast":path==="/api/scan"?"scan":null;
     if(!feature)continue;
+    if(["clientDisconnected","responseStreamDisconnected"].includes(item.outcome))continue;
     const status=item.event.response?.status??0;
     // User validation, Turnstile, rate limits and client disconnects are not server faults.
     let failed=status>=500 || item.exceptions.length>0 || ["exceededCpu","exceededMemory","exception"].includes(item.outcome);

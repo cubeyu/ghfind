@@ -5,7 +5,8 @@ export const STATE_TTL_MS = 7 * HISTORY_TTL_MS;
 export const MAX_POINTS = 192;
 export const MAX_METRICS = 256;
 export const MAX_WINDOWS = 288;
-export const MAX_STATE_BYTES = 96 * 1024;
+export const MAX_STATE_BYTES = 192 * 1024;
+export const MAX_NOTICES = 64;
 export const MAX_WINDOW_BYTES = 48 * 1024;
 export const REMINDER_MS = 30 * 60_000;
 export type Product = "D1" | "Workers" | "R2" | "KV" | "DO" | "Queues" | "Billing" | "Monitor" | "Service";
@@ -57,6 +58,8 @@ export interface State {
   mailReceipts: { at: number; messageId: string }[];
   mailBudget: { hour: number; hourly: number; day: number; daily: number };
   lastError: string | null;
+  nextDigest?: number;
+  digestRecipients?: string[];
 }
 export function emptyState(): State {
   return { lastFrame: 0, lastSuccess: 0, lastAttempt: 0, lastBilling: 0, metrics: {}, outbox: [], recentDelivery: [], mailReceipts: [], mailBudget: {hour:0,hourly:0,day:0,daily:0}, lastError: null };
@@ -73,7 +76,7 @@ export function recipients(value: string): string[] {
 }
 export function compact(state: State, now: number): void {
   for (const [key, value] of Object.entries(state.metrics)) if (value.expiresAt <= now) delete state.metrics[key];
-  state.outbox = state.outbox.filter(n => n.expiresAt > now).slice(-16);
+  state.outbox = state.outbox.filter(n => n.expiresAt > now).slice(-MAX_NOTICES);
   state.mailReceipts = state.mailReceipts.filter(n => n.at > now - HISTORY_TTL_MS).slice(-12);
   state.recentDelivery = state.recentDelivery.filter(n => n.at > now - HISTORY_TTL_MS).slice(-12);
 }
@@ -149,13 +152,28 @@ export function evaluate(state: State, frame: Frame, now: number, rules = DEFAUL
       }
     }
     m.lastSeen = frame.at; m.expiresAt = now + STATE_TTL_MS;
+    // An ordinary incident that recovered before its digest must not send a stale fault.
+    if (!m.severity && !m.notifiedSeverity) {
+      state.outbox=state.outbox.filter(n=>n.key!==p.key || n.delivered.length>0);
+    }
+    const waiting=state.outbox.find(n=>n.key===p.key);
+    if(waiting && m.severity>waiting.severity){
+      waiting.severity=m.severity;waiting.kind="escalation";
+      waiting.text=describeNotice(p,m,frame.at,ratio);waiting.delivered=[];
+    }
     let kind: Notice["kind"] | undefined;
+    if (!m.severity && m.notifiedSeverity && p.product === "Service") {
+      // Healthy business windows are bookkeeping, not another fault email.
+      m.notifiedSeverity = 0;
+      m.lastNotified = now;
+      state.outbox = state.outbox.filter(n => n.key !== p.key);
+    }
     if (!m.severity && m.notifiedSeverity) kind = "recovery";
     else if (m.severity && !m.notifiedSeverity) kind = "open";
     else if (m.severity > m.notifiedSeverity) kind = "escalation";
     else if (m.severity && now - m.lastNotified >= REMINDER_MS) kind = "reminder";
     if (kind && !state.outbox.some(n => n.key === p.key)) {
-      if (state.outbox.length >= 16) throw new Error("Notification outbox limit exceeded");
+      if (state.outbox.length >= MAX_NOTICES) throw new Error("Notification outbox limit exceeded");
       state.outbox.push({ id: `${p.key}:${m.incident}:${kind}:${Math.floor(now/REMINDER_MS)}`, key: p.key, kind, severity: m.severity,
         text: describeNotice(p, m, frame.at, ratio),
         delivered: [], attempts: 0, expiresAt: now + STATE_TTL_MS });

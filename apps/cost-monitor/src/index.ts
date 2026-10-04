@@ -1,5 +1,6 @@
 import { DurableObject } from "cloudflare:workers";
-import { acknowledge, compact, DEFAULT_RULES, emptyState, evaluate, HISTORY_TTL_MS, MAX_STATE_BYTES, MAX_WINDOWS, MAX_WINDOW_BYTES, recipients, STATE_TTL_MS, WINDOW_MS, type Frame, type State } from "./engine";
+import { acknowledge, compact, DEFAULT_RULES, emptyState, evaluate, HISTORY_TTL_MS, MAX_STATE_BYTES, MAX_NOTICES, MAX_WINDOWS, MAX_WINDOW_BYTES, recipients, STATE_TTL_MS, WINDOW_MS, type Frame, type State } from "./engine";
+import { DIGEST_MS, selectMail } from "./mail-policy";
 import { billable, collect } from "./metrics";
 import { businessPoints, probe, summarize, type BusinessCount } from "./business";
 interface MonitorEnv extends Env {
@@ -64,21 +65,25 @@ export class CostMonitor extends DurableObject<MonitorEnv> {
   }
   private collectionFailure(state:State,now:number):void {
     const key="Monitor:collection:health";
-    if(state.outbox.some(n=>n.key===key)||state.outbox.length>=16)return;
+    if(state.outbox.some(n=>n.key===key)||state.outbox.length>=MAX_NOTICES)return;
     const last=state.recentDelivery.filter(d=>d.id.startsWith(key)).at(-1);
     if(last && now-last.at<30*60_000)return;
     state.outbox.push({id:`${key}:${Math.floor(now/(30*60_000))}`,key,kind:"open",severity:2,text:`Cloudflare 用量采集未完成或数据尚未上报。不能确认账单安全。\n状态：${state.lastError??"采集不完整"}\n请检查 API Token 权限、数据延迟、指标映射与监控运行状态。`,delivered:[],attempts:0,expiresAt:now+STATE_TTL_MS});
   }
-  private async deliver(state:State,now:number,failSecond=false):Promise<void> {
+  private async deliver(state:State,now:number,failSecond=false,immediateExercise=false):Promise<void> {
     if(!state.outbox.length)return;
     const targets=recipients(this.env.ALERT_RECIPIENTS);
+    if(!state.nextDigest){state.nextDigest=now+DIGEST_MS;state.digestRecipients=[];this.save(state,now);}
+    if(immediateExercise && this.env.E2E_ENABLED==="1")state.nextDigest=now;
+    const digestDue=now>=state.nextDigest;
     // One aggregated message per recipient per tick, not one email per metric/user.
     for(const to of targets){
-      const pending=state.outbox.filter(n=>!n.delivered.includes(to));
+      const pending=selectMail(state.outbox.filter(n=>!n.delivered.includes(to)),now,
+        state.digestRecipients?.includes(to)?now+DIGEST_MS:state.nextDigest);
       if(!pending.length)continue;
       pending.sort((a,b)=>b.severity-a.severity);
       const subject=`[ghfind${this.env.E2E_ENABLED==="1"?" E2E 演练":""}] ${pending.some(n=>n.severity>=2)?"严重 ":""}${TITLES[pending[0].kind]}：${pending[0].text.split("\n")[0].slice(0,65)}（${pending.length} 项）`;
-      const text=[this.env.E2E_ENABLED==="1"?"这是告警链路演练，包含模拟异常，不代表生产数据库发生事故。":"这是 ghfind 费用、性能和关键功能监控通知。",...pending.map(n=>`${TITLES[n.kind]}\n${n.text}`),`Cloudflare 排查入口：https://dash.cloudflare.com/${this.env.CF_ACCOUNT_ID}/billing/billable-usage`,"实时指标异常持续期间每 30 分钟提醒；日账单每 6 小时重新对账。连续两个有效正常窗口或账单对账结果后通知恢复。"].join("\n\n");
+      const text=[this.env.E2E_ENABLED==="1"?"这是告警链路演练，包含模拟异常，不代表生产数据库发生事故。":"这是 ghfind 费用、性能和关键功能监控通知。",...pending.map(n=>`${TITLES[n.kind]}\n${n.text}`),`Cloudflare 排查入口：https://dash.cloudflare.com/${this.env.CF_ACCOUNT_ID}/billing/billable-usage`,"普通告警与持续异常提醒每小时合并发送；关键功能严重故障或严重费用风险首次发生/升级时及时发送。关键功能恢复不发邮件，其他恢复信息进入摘要。日账单每 6 小时重新对账。"].join("\n\n");
       const hour=Math.floor(now/3600_000),day=Math.floor(now/86400_000);
       const budget=state.mailBudget;
       if(budget.hour!==hour){budget.hour=hour;budget.hourly=0;}
@@ -93,6 +98,9 @@ export class CostMonitor extends DurableObject<MonitorEnv> {
           const result=await this.env.EMAIL.send({from:{email:this.env.ALERT_FROM,name:"ghfind 故障与费用监控"},to,subject,text,html:`<pre style="white-space:pre-wrap">${escaped}</pre>`});
           id=result.messageId;
         }
+        if(digestDue && !state.digestRecipients?.includes(to)){
+          state.digestRecipients??=[];state.digestRecipients.push(to);
+        }
         state.mailReceipts.push({at:now,messageId:id});
         for(const n of pending){n.delivered.push(to);n.attempts++;}
         // Delivery acceptance receipt only; final delivery is checked in Email Service logs.
@@ -104,6 +112,9 @@ export class CostMonitor extends DurableObject<MonitorEnv> {
         this.save(state,now);
         console.error(JSON.stringify({event:"cost_monitor_mail_failed"}));
       }
+    }
+    if(digestDue && targets.every(to=>state.digestRecipients?.includes(to))){
+      state.nextDigest=now+DIGEST_MS;state.digestRecipients=[];
     }
     for(const notice of [...state.outbox])if(targets.every(to=>notice.delivered.includes(to)))acknowledge(state,notice,now);
     this.save(state,now);
@@ -146,7 +157,7 @@ export class CostMonitor extends DurableObject<MonitorEnv> {
   async health(): Promise<unknown> {
     const now=Date.now(),state=this.load(now);
     const counts=this.ctx.storage.sql.exec<{windows:number;bytes:number}>("SELECT COUNT(*) AS windows,COALESCE(SUM(length(data)),0) AS bytes FROM windows WHERE expires_at>?",now).one();
-    return {version:1,lastAttempt:state.lastAttempt,lastSuccess:state.lastSuccess,lastFrame:state.lastFrame,lastBilling:state.lastBilling,lastError:state.lastError,metrics:Object.keys(state.metrics).length,pending:state.outbox.length,deliveries:state.recentDelivery,mailReceipts:state.mailReceipts,mailBudget:state.mailBudget,...counts,bounds:{historyTtlHours:24,stateTtlDays:7,maxWindows:MAX_WINDOWS,maxWindowBytes:MAX_WINDOW_BYTES,maxStateBytes:MAX_STATE_BYTES},healthy:now-state.lastSuccess<30*60_000 && !state.lastError && !state.outbox.length};
+    return {version:1,lastAttempt:state.lastAttempt,lastSuccess:state.lastSuccess,lastFrame:state.lastFrame,lastBilling:state.lastBilling,lastError:state.lastError,metrics:Object.keys(state.metrics).length,pending:state.outbox.length,deliveries:state.recentDelivery,mailReceipts:state.mailReceipts,mailBudget:state.mailBudget,...counts,bounds:{historyTtlHours:24,stateTtlDays:7,maxWindows:MAX_WINDOWS,maxWindowBytes:MAX_WINDOW_BYTES,maxStateBytes:MAX_STATE_BYTES},healthy:now-state.lastSuccess<30*60_000 && !state.lastError && !state.outbox.some(n=>n.attempts>0 && !n.delivered.length)};
   }
   async alarm():Promise<void> {
     const now=Date.now();this.prune(now);
@@ -160,6 +171,20 @@ export class CostMonitor extends DurableObject<MonitorEnv> {
       if(phase==="reset"){this.ctx.storage.sql.exec("DELETE FROM monitor_state");this.ctx.storage.sql.exec("DELETE FROM windows");this.ctx.storage.sql.exec("DELETE FROM business_windows");return {status:"reset"};}
       const state=this.load();const base=Math.floor(Date.now()/86400_000)*86400_000;
       const make=(i:number,efficiency:number):Frame=>({at:base+i*WINDOW_MS,healthy:["D1","Workers","R2","KV","DO","Queues"],errors:[],points:[{key:"D1:e2e:read",product:"D1",resource:"E2E synthetic database",label:"模拟读放大",amount:efficiency*100,operations:100,unit:"rows",usd:efficiency*100*1e-9,efficiency,efficiencyWarning:50_000,efficiencyCritical:200_000,minAmount:100_000}]});
+      if(phase==="hourly"){
+        const s=emptyState(),notice=(key:string,severity:number)=>({id:key,key,kind:"open" as const,severity,text:"hourly E2E",delivered:[],attempts:0,expiresAt:Date.now()+STATE_TTL_MS});
+        s.outbox.push(notice("D1:test:read",1));
+        await this.deliver(s,base);await this.deliver(s,base+30*60_000);
+        const before=s.mailReceipts.length;
+        await this.deliver(s,base+60*60_000);const digest=s.mailReceipts.length;
+        s.outbox.push(notice("Service:roast:errors",2));await this.deliver(s,base+65*60_000);
+        const critical=s.mailReceipts.length;
+        s.outbox.push(notice("KV:test:write",1));await this.deliver(s,base+70*60_000);
+        const quiet=s.mailReceipts.length;
+        await this.deliver(s,base+120*60_000,true);const partial=s.mailReceipts.length;
+        await this.deliver(s,base+125*60_000);const retry=s.mailReceipts.length;
+        return {before,digest,critical,quiet,partial,retry,pending:s.outbox.length};
+      }
       if(phase==="business"){
         const at=Math.floor(Date.now()/WINDOW_MS)*WINDOW_MS;
         await this.recordBusiness([{at,feature:"roast",total:2,failed:1,slow:0}]);
@@ -186,7 +211,7 @@ export class CostMonitor extends DurableObject<MonitorEnv> {
         state.mailBudget={hour:Math.floor(now/3600_000),hourly:8,day:Math.floor(now/86400_000),daily:120};
         state.outbox.push({id:"Monitor:e2e:rate-limit",key:"Monitor:e2e:rate-limit",kind:"open",severity:2,text:"模拟发送预算耗尽",delivered:[],attempts:0,expiresAt:Date.now()+STATE_TTL_MS});
       } else throw new Error("Unknown E2E phase");
-      this.save(state,Date.now());await this.deliver(state,base+(phase==="reminder"?22:phase==="recovery"?24:15)*WINDOW_MS,phase==="partial");
+      this.save(state,Date.now());await this.deliver(state,base+(phase==="reminder"?22:phase==="recovery"?24:15)*WINDOW_MS,phase==="partial",true);
       return {status:"exercised",phase,pending:state.outbox.length,deliveries:state.recentDelivery};
     } finally {this.ctx.storage.sql.exec("DELETE FROM lease WHERE owner=?",owner);}
   }
@@ -208,7 +233,7 @@ export default {
     const path=new URL(request.url).pathname,stub=env.MONITOR.getByName("account");
     if(path==="/health"&&request.method==="GET")return json(await stub.health());
     if(path==="/run"&&request.method==="POST")return json(await stub.tick());
-    if(env.E2E_ENABLED==="1"&&request.method==="POST"&&/^\/test\/(reset|business|baseline|breach|partial|duplicate|reminder|recovery|retention|rate-limit)$/.test(path))return json(await stub.exercise(path.split("/").at(-1)!));
+    if(env.E2E_ENABLED==="1"&&request.method==="POST"&&/^\/test\/(reset|hourly|business|baseline|breach|partial|duplicate|reminder|recovery|retention|rate-limit)$/.test(path))return json(await stub.exercise(path.split("/").at(-1)!));
     return json({error:"Not found"},404);
   },
 } satisfies ExportedHandler<MonitorEnv>;
