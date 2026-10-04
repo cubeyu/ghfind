@@ -83,3 +83,15 @@ analytics and sends clearly labelled rehearsal messages to the configured list.
 Optionally set `COST_MONITOR_EVIDENCE` to a **private, git-ignored** output file.
 Confirm those message IDs are delivered in Email Service logs, then clean up the
 e2e Worker. Never run synthetic scenarios against the production Worker.
+
+## 可读告警与关键功能
+
+邮件按严重程度排序，区分账单风险、运行错误、性能/用量异常、关键功能故障；显示北京时间、资源名称与持续同速的小时/日费用估算。估算未扣套餐额度，不等于最终账单。DO/KV/R2/Queues 的分母是整个账户 Worker 请求量，不能理解为单个资源的 SQL 查询次数。
+
+相对基线异常同时要求窗口套餐外估算达到 $0.05/小时才预警，$0.50/小时才允许按十倍放大升级严重告警，避免低基线、少量读写产生严重邮件。D1 查询放大、CPU、错误和功能故障独立阈值继续生效，不能因为费用小而被屏蔽。Workers 运行错误持续两个窗口预警，错误率至少 5% 且至少一次错误立即严重告警。
+
+API production 通过 Tail Worker 向监控写入固定功能名的五分钟聚合计数，覆盖 README 大卡/迷你卡/徽章、首页分析、锐评。锐评读取已有 `roast.summary` 结果，能识别 HTTP 200 后的生成失败；用户自带模型配置失败和正常 4xx 不计为网站故障。单次已观测关键功能服务端失败立即将该窗口判为严重；两次有真实成功调用的有效窗口后恢复。没有流量不代表恢复。流式请求结束后才能收到 Tail；加上指标等待上报，邮件通常延迟约 10–15 分钟。
+
+每五分钟额外 GET 首页及 torvalds 的大卡/迷你卡，检查 HTTP 和 Content-Type；连续两个窗口失败预警，连续两个有效正常窗口恢复。探测不执行新的 GitHub 分析或付费 LLM 生成。探测不证明每个用户卡片内容都正确，也不验证完整锐评内容质量。计数只保存功能、时间和数量，不存用户名、URL、请求体、原始日志或密钥；24 小时清理。Tail 可能重复投递，计数是观测数量，不是财务账单。
+
+发布顺序要求先部署监控 Tail consumer，再部署 API producer。两个生产 workflow 均仅在 main CI 成功后发布；API workflow 增加 consumer 先行部署以避免首次上线竞争。现有邮件收件人私密配置保持不变。

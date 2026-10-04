@@ -7,10 +7,10 @@ function api(rows:unknown[]){return Response.json({data:{viewer:{accounts:[{rows
 function fixture(query:string){
   if(query.includes("d1Queries"))return [{count:100,dimensions:{databaseId:"core",query:"SELECT * FROM sensitive WHERE username='private-user'"},sum:{rowsRead:38_000_000,rowsWritten:0,rowsReturned:1}}];
   if(query.includes("d1Analytics"))return [{dimensions:{databaseId:"core"},sum:{rowsRead:38_000_000,rowsWritten:20,readQueries:100,writeQueries:2}}];
-  if(query.includes("workersInvocations"))return [{dimensions:{scriptName:"app"},sum:{requests:200,cpuTimeUs:100_000}}];
-  if(query.includes("r2Operations"))return [{dimensions:{bucketName:"bucket",actionType:"ListParts",storageClass:"Standard"},sum:{requests:100,responseObjectSize:0}}];
+  if(query.includes("workersInvocations"))return [{dimensions:{scriptName:"app"},sum:{errors:0,requests:200,cpuTimeUs:100_000}}];
+  if(query.includes("r2Operations"))return [{dimensions:{bucketName:"bucket",actionType:"ListParts",storageClass:"Standard"},sum:{errors:0,requests:100,responseObjectSize:0}}];
   if(query.includes("r2Storage"))return [{dimensions:{bucketName:"bucket",storageClass:"Standard"},max:{payloadSize:1e9,metadataSize:0}}];
-  if(query.includes("kvOperations"))return [{dimensions:{namespaceId:"cache",actionType:"write"},sum:{requests:100}}];
+  if(query.includes("kvOperations"))return [{dimensions:{namespaceId:"cache",actionType:"write"},sum:{errors:0,requests:100}}];
   return [];
 }
 const mockFetch=()=>vi.fn(async(_url:unknown,init?:RequestInit)=>api(fixture(JSON.parse(String(init?.body)).query)));
@@ -18,11 +18,11 @@ describe("aggregate collection",()=>{
   it("aggregates repeated Worker names, preserving CPU, cost and request-normalized operation totals",async()=>{
     const fetcher=vi.fn(async(_url:unknown,init?:RequestInit)=>{
       const q=JSON.parse(String(init?.body)).query;
-      if(q.includes("workersInvocations"))return api([...fixture(q),{dimensions:{scriptName:"app"},sum:{requests:300,cpuTimeUs:600_000}},...Array.from({length:2},()=>({dimensions:{scriptName:"__unknown__"},sum:{requests:10,cpuTimeUs:10_000}}))]);
+      if(q.includes("workersInvocations"))return api([...fixture(q),{dimensions:{scriptName:"app"},sum:{errors:0,requests:300,cpuTimeUs:600_000}},...Array.from({length:2},()=>({dimensions:{scriptName:"__unknown__"},sum:{errors:0,requests:10,cpuTimeUs:10_000}}))]);
       return api(fixture(q));
     });
     const f=await collect(config,now,fetcher as typeof fetch);expect(f.errors).toEqual([]);expect(()=>validateFrame(f)).not.toThrow();
-    expect(f.points.filter(p=>p.product==="Workers")).toHaveLength(4);
+    expect(f.points.filter(p=>p.product==="Workers")).toHaveLength(6);
     expect(f.points.find(p=>p.key==="Workers:app:cpu")).toMatchObject({amount:700,operations:500,efficiency:1.4});
     expect(f.points.find(p=>p.key==="Workers:__unknown__:requests")?.amount).toBe(20);
     expect(f.points.find(p=>p.label.includes("ListParts"))?.efficiency).toBeCloseTo(100/520);

@@ -2,7 +2,7 @@ import { describe,expect,it } from "vitest";
 import { acknowledge,compact,emptyState,evaluate,MAX_METRICS,recipients,STATE_TTL_MS,WINDOW_MS,type Frame,type Point,type State } from "../engine";
 const base=1_800_000_000_000;
 function frame(i:number,efficiency=200,extra:Partial<Point>={}):Frame {
-  return {at:base+i*WINDOW_MS,healthy:["D1","Workers","R2","KV"],errors:[],points:[{key:"D1:core:read",product:"D1",resource:"core",label:"read",amount:100*efficiency,operations:100,efficiency,unit:"rows",usd:0,efficiencyWarning:50_000,efficiencyCritical:200_000,minAmount:100_000,...extra}]};
+  return {at:base+i*WINDOW_MS,healthy:["D1","Workers","R2","KV","DO","Queues"],errors:[],points:[{key:"D1:core:read",product:"D1",resource:"core",label:"read",amount:100*efficiency,operations:100,efficiency,unit:"rows",usd:0,efficiencyWarning:50_000,efficiencyCritical:200_000,minAmount:100_000,...extra}]};
 }
 function run(s:State,i:number,eff=200,extra:Partial<Point>={}){evaluate(s,frame(i,eff,extra),base+i*WINDOW_MS);}
 function ack(s:State,i:number){for(const n of [...s.outbox]){n.delivered=["one@example.org","two@example.org"];acknowledge(s,n,base+i*WINDOW_MS);}}
