@@ -38,7 +38,7 @@ request bodies and raw billing line items are not retained.
 
 - Windows: 24-hour logical TTL, at most 288 rows, at most 48 KiB per row.
 - State/baselines: 7-day TTL, at most 256 metrics and 192 KiB total; inactive baselines can be evicted earlier.
-- Outbox: at most 16 aggregate notices, 7-day TTL; delivery receipts: last 12,
+- Outbox: at most 64 aggregate notices, 7-day TTL; delivery receipts: last 12,
   at most 24 hours. Recipient addresses are private configuration.
 - Cleanup uses indexed expiry and the window primary key at every collection;
   an alarm also reclaims expired rows when the cron stops (daily cleanup cadence).
