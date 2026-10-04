@@ -32,6 +32,10 @@ try {
     const live=await request("/run");assert.equal(live.status,200);assert.equal(live.body.status,"ok");assert.ok(live.body.points>0);assert.deepEqual(live.body.errors,[]);result.steps.push({name:"real Cloudflare collection",...live.body});
     await request("/test/reset");
   }
+  const hourly=(await request("/test/hourly")).body;
+  assert.deepEqual(hourly,{before:0,digest:2,critical:4,quiet:4,partial:5,retry:6,pending:0});
+  result.steps.push({name:"hourly digest, urgent bypass and partial-recipient digest retry"});
+  await request("/test/reset");
   const business=(await request("/test/business")).body;
   assert.equal(business.rows[0].total,5);assert.equal(business.rows[0].failed,1);assert.equal(business.rows[0].slow,1);assert.equal(business.severity,2);assert.equal(business.remaining,0);
   result.steps.push({name:"business aggregate RPC, critical failure policy and TTL cleanup"});
