@@ -1408,7 +1408,7 @@
     },
     "hero": {
       "eyebrow": "ghfind Review · GitHub App",
-      "title": "Klasifikasi Issue dan PR,\ndi bawah kendali Anda.",
+      "title": "Issue dan PR,\nAnda yang mengatur.",
       "subtitle": "Beri label pada Issue dan PR berdasarkan skor penulis atau konten. Kelola otomatisasi melalui konsol Bot.",
       "admin": "Buka konsol Bot",
       "install": "Instal di GitHub",
