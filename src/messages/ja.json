@@ -1408,7 +1408,7 @@
     },
     "hero": {
       "eyebrow": "ghfind Review · GitHub App",
-      "title": "Issue・PR の分類を、\nあなたの手で管理。",
+      "title": "Issue・PR 分類を、\nあなたの手で。",
       "subtitle": "投稿者スコアや内容に基づくラベル付けと自動処理を、Bot コンソールでまとめて管理。",
       "admin": "Bot コンソールを開く",
       "install": "GitHub にインストール",
