@@ -205,6 +205,31 @@ export async function putBackfill(
     .first();
   return row !== null;
 }
+// Requeues a failed job once: the failed row is closed first, so repeated
+// clicks or API calls cannot clone it again. The new id keeps the original
+// prefix (open-, mention-, rescore-N-), so a retried backfill item still sends
+// no email or comment and a follow-up stays a follow-up.
+export async function retryJob(
+  env: Env,
+  job: Job,
+  installation: number,
+  fullName: string,
+): Promise<boolean> {
+  const closed = await env.DB.prepare(
+    "UPDATE jobs SET state='cancelled',result='Retried',lease=0,updated=? WHERE id=? AND state='failed' RETURNING id",
+  )
+    .bind(Date.now(), job.id)
+    .first();
+  if (!closed || job.repository == null) return false;
+  // A retried backfill stays a backfill and is skipped while another is active.
+  if (isBackfill(job.id))
+    return putBackfill(env, installation, job.repository, fullName);
+  return putJob(env, {
+    ...job,
+    installation,
+    id: `${job.id.replace(/~retry\d+$/, "")}~retry${Date.now()}`,
+  });
+}
 export async function lastBackfill(env: Env, repository: number) {
   return env.DB.prepare(
     "SELECT state,result,created,updated FROM jobs WHERE repository=? AND kind='initialize' AND id LIKE 'backfill-%' ORDER BY created DESC LIMIT 1",
