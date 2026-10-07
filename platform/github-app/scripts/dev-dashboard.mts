@@ -29,6 +29,7 @@ async function main() {
   const sessionId = randomUUID();
   const userToken = "local-dashboard-fixture-user-token";
   const secret = randomBytes(32).toString("hex");
+  const byokSecret = randomBytes(32).toString("base64url");
   const now = Date.now();
   const jevEndpoint = "https://openrouter.ai/api/alpha/decisions";
   let openrouterKey = "";
@@ -67,6 +68,11 @@ async function main() {
   let lastDecision: { status: number; latencyMs: number; requestVersion: string; requestSha256: string; model?: string; usage?: { inputTokens: number; outputTokens: number; cost?: number } } | null = null;
   const outbound = async (request: Request) => {
     const url = new URL(request.url);
+    // Only the explicit live preview may query the fixed public DoH service,
+    // and only for the real provider used in this fixture. Never forward auth.
+    if (liveJev && url.origin === "https://cloudflare-dns.com" && url.pathname === "/dns-query" &&
+      url.searchParams.get("name") === "openrouter.ai" && ["1", "28"].includes(url.searchParams.get("type") || "") && request.method === "GET")
+      return fetch(url.href, { headers: { Accept: "application/dns-json" }, redirect: "manual", signal: AbortSignal.timeout(5000) });
     if (liveJev && request.url === jevEndpoint && request.method === "POST") {
       if (request.headers.get("authorization") !== `Bearer ${openrouterKey}`)
         return Response.json({ error: "Unexpected model credential" }, { status: 403 });
@@ -158,6 +164,7 @@ async function main() {
     bindings: {
       APP_ID: "123", APP_SLUG: "ghfind-review", APP_CLIENT_ID: "local-fixture-client", APP_CLIENT_SECRET: "local-fixture-secret",
       APP_PRIVATE_KEY: privateKey, WEBHOOK_SECRET: "local-fixture-webhook", SESSION_SECRET: secret,
+      BYOK_ENCRYPTION_KEY: byokSecret,
       ENABLED: "true", EMAIL_ENABLED: "false", EMAIL_FROM: "preview@example.invalid", ALLOWED_ACCOUNTS: installationCount === 2 ? "sample,harbor" : "sample",
       LLM_BASE_URL: "", LLM_MODEL: "", TRIAGE_PROVIDER: liveJev ? "jev" : "llm", OPENROUTER_API_KEY: openrouterKey,
       JEV_MODEL: "typesafe/jev-1.13", JEV_THRESHOLD: "0.8",
@@ -166,15 +173,15 @@ async function main() {
   await mf.ready;
   console.log("Local Worker runtime ready; applying actual D1 migrations...");
   const db = await mf.getD1Database("DB");
-  const migrations = (await readdir(join(appRoot, "migrations"))).filter((name) => /^000[1-7]_.*\.sql$/.test(name)).sort();
-  if (migrations.length !== 7) throw new Error("Expected all seven actual Worker migrations");
+  const migrations = (await readdir(join(appRoot, "migrations"))).filter((name) => /^000[1-8]_.*\.sql$/.test(name)).sort();
+  if (migrations.length !== 8) throw new Error("Expected all eight actual Worker migrations");
   const migrationStatements = [];
   for (const migration of migrations) {
     for (const sql of unstable_splitSqlQuery(await readFile(join(appRoot, "migrations", migration), "utf8")))
       migrationStatements.push(db.prepare(sql));
   }
   await db.batch(migrationStatements);
-  console.log("All seven migrations applied; seeding synthetic dashboard rows...");
+  console.log("All eight migrations applied; seeding synthetic dashboard rows...");
   // Same AES-GCM format and session lookup used by production authentication.
   if (!globalThis.crypto) Object.defineProperty(globalThis, "crypto", { value: webcrypto });
   const encrypted = await seal({ SESSION_SECRET: secret } as Env, userToken);
@@ -236,7 +243,7 @@ async function main() {
   const currentLedger = async () => {
     // Loopback-only read-only diagnostics of the real D1 fixture ledger. Hashes
     // demonstrate preview admission did not update existing rows or save input.
-    const tables = ["jobs", "audit_log", "triage_labels", "repo_settings"] as const;
+    const tables = ["jobs", "audit_log", "triage_labels", "repo_settings", "ai_providers"] as const;
     const rows = await db.batch(tables.flatMap(table => [db.prepare(`SELECT COUNT(*) AS count FROM ${table}`), db.prepare(`SELECT * FROM ${table} ORDER BY rowid LIMIT 1000`)]));
     return Object.fromEntries(tables.map((table, index) => { const count = Number(rows[index * 2].results[0].count); return [table, { count, truncated: count > 1000, sha256: createHash("sha256").update(JSON.stringify(rows[index * 2 + 1].results)).digest("hex") }]; }));
   };
