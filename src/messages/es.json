@@ -1408,7 +1408,7 @@
     },
     "hero": {
       "eyebrow": "ghfind Review · GitHub App",
-      "title": "Clasifica Issues y PRs,\ncon el control en tus manos.",
+      "title": "Issues y PRs,\nbajo tu control.",
       "subtitle": "Etiqueta Issues y PRs por puntuación del autor o contenido. Gestiona la automatización desde la consola del Bot.",
       "admin": "Abrir consola del Bot",
       "install": "Instalar en GitHub",
