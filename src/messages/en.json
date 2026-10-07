@@ -1412,8 +1412,7 @@
       "subtitle": "Label Issues and PRs by author score or content. Control automation, previews and cleanup from one Bot console.",
       "admin": "Open Bot console",
       "install": "Install on GitHub",
-      "status": "Bot home",
-      "note": "Runs as ghfind-review[bot]. It only adds labels — it never comments on, closes or blocks a submission."
+      "status": "Bot home"
     },
     "console": {
       "heading": "Your Bot workspace",
@@ -1533,40 +1532,10 @@
       "stop": {
         "heading": "Pause or remove the Bot",
         "body": "Pause processing per repository from the console, or remove the App in GitHub settings. Existing labels stay; use cleanup to review eligible Bot changes separately."
-      },
-      "rescore": {
-        "heading": "Asking for a rescore",
-        "body": "After the automatic retries, the author or a repository admin can comment @ghfind-review on the issue to score it again."
       }
     },
     "disclaimer": "The score reflects the author’s public GitHub profile, not the quality of this contribution. New contributors may simply have a short public record.",
-    "source": "Source code and self-hosting guide",
-    "preview": {
-      "label": "Example issue list with review labels",
-      "heading": "Issues",
-      "items": {
-        "top": "Crash when parsing nested config",
-        "medium": "Add dark mode to settings",
-        "noScore": "Typo in README"
-      }
-    },
-    "steps": {
-      "heading": "How it works",
-      "items": {
-        "install": {
-          "title": "Install on selected repositories",
-          "body": "Grant Issues and Pull requests read & write. Choose Only select repositories to start small; org repos may need owner approval."
-        },
-        "open": {
-          "title": "Someone opens an issue or PR",
-          "body": "The bot looks up the author's public ghfind score in the background. The issue body is never read or scored."
-        },
-        "label": {
-          "title": "A review: label appears",
-          "body": "On install, the first pages of open issues and PRs are labelled too. Edits and reopens are not rescored."
-        }
-      }
-    }
+    "source": "Source code and self-hosting guide"
   },
   "integrations": {
     "eyebrow": "For developers and agents",

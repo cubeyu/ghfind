@@ -1412,8 +1412,7 @@
       "subtitle": "Gắn nhãn theo điểm tác giả hoặc nội dung. Quản lý tự động hóa qua bảng điều khiển Bot.",
       "admin": "Mở bảng điều khiển Bot",
       "install": "Cài đặt trên GitHub",
-      "status": "Trang chủ Bot",
-      "note": "Chạy dưới tên ghfind-review[bot]. Chỉ gắn nhãn — không bình luận, đóng hay chặn bất kỳ đóng góp nào."
+      "status": "Trang chủ Bot"
     },
     "console": {
       "heading": "Không gian làm việc Bot của bạn",
@@ -1533,40 +1532,10 @@
       "stop": {
         "heading": "Tạm dừng hoặc gỡ Bot",
         "body": "Tạm dừng xử lý từng kho mã từ bảng điều khiển hoặc gỡ App trong cài đặt GitHub. Các nhãn hiện có vẫn được giữ lại; dùng chức năng dọn dẹp để xem riêng những thay đổi của Bot có thể hoàn tác."
-      },
-      "rescore": {
-        "heading": "Yêu cầu chấm lại",
-        "body": "Sau các lần thử lại tự động, tác giả hoặc quản trị viên repo có thể bình luận @ghfind-review trong issue để chấm lại."
       }
     },
     "disclaimer": "Điểm phản ánh hồ sơ GitHub công khai của tác giả, không phải chất lượng của đóng góp này. Người đóng góp mới có thể chỉ có lịch sử công khai ngắn.",
-    "source": "Mã nguồn và hướng dẫn tự lưu trữ",
-    "preview": {
-      "label": "Ví dụ danh sách issue có nhãn review",
-      "heading": "Issues",
-      "items": {
-        "top": "Lỗi khi phân tích cấu hình lồng nhau",
-        "medium": "Thêm chế độ tối cho phần cài đặt",
-        "noScore": "Lỗi chính tả trong README"
-      }
-    },
-    "steps": {
-      "heading": "Cách hoạt động",
-      "items": {
-        "install": {
-          "title": "Cài vào các repo đã chọn",
-          "body": "Cấp quyền đọc & ghi cho Issues và Pull requests. Chọn Only select repositories để thử quy mô nhỏ; repo tổ chức có thể cần owner phê duyệt."
-        },
-        "open": {
-          "title": "Có người mở issue hoặc PR",
-          "body": "Bot tra cứu điểm ghfind công khai của tác giả ở chế độ nền. Nội dung issue không bao giờ được đọc hay chấm điểm."
-        },
-        "label": {
-          "title": "Nhãn review: xuất hiện",
-          "body": "Khi cài, các trang đầu của issue và PR đang mở cũng được gắn nhãn. Sửa hoặc mở lại sẽ không chấm lại."
-        }
-      }
-    }
+    "source": "Mã nguồn và hướng dẫn tự lưu trữ"
   },
   "integrations": {
     "eyebrow": "For developers and agents",

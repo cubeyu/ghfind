@@ -1419,8 +1419,7 @@
       "subtitle": "作者评分、内容语义打标与仓库自动化，统一在 Bot 后台管理。",
       "admin": "打开 Bot 后台",
       "install": "在 GitHub 安装",
-      "status": "Bot 主页",
-      "note": "以 ghfind-review[bot] 身份运行。只打标签，不评论、不关闭、不拦截任何提交。"
+      "status": "Bot 主页"
     },
     "console": {
       "heading": "你的 Bot 工作台",
@@ -1540,40 +1539,10 @@
       "stop": {
         "heading": "随时暂停或移除",
         "body": "在后台按仓库暂停处理，或在 GitHub 设置中移除 App。已有标签会保留；需要撤回时，可另行预览并清理符合条件的 Bot 变更。"
-      },
-      "rescore": {
-        "heading": "请求重新评分",
-        "body": "自动重试结束后，作者或仓库管理员可以在该 issue 下评论 @ghfind-review 重新评分。"
       }
     },
     "disclaimer": "评分反映的是作者的公开 GitHub profile，不代表这次提交的质量。新贡献者可能只是公开记录较少。",
-    "source": "源代码与自部署指南",
-    "preview": {
-      "label": "带 review 标签的 issue 列表示例",
-      "heading": "Issue 上的效果示例",
-      "items": {
-        "top": "解析嵌套配置时崩溃",
-        "medium": "设置页支持深色模式",
-        "noScore": "README 有错别字"
-      }
-    },
-    "steps": {
-      "heading": "工作方式",
-      "items": {
-        "install": {
-          "title": "选择仓库安装",
-          "body": "授权 Issues 和 Pull requests 读写权限。建议选 Only select repositories 先小范围试用；组织仓库可能需要 owner 批准。"
-        },
-        "open": {
-          "title": "有人新建 issue 或 PR",
-          "body": "bot 在后台查询作者的公开 ghfind 评分，不读取也不评估 issue 正文。"
-        },
-        "label": {
-          "title": "出现 review: 标签",
-          "body": "安装时也会给现有 Open issue 和 PR 的前几页打标。编辑或重新打开不会重新评分。"
-        }
-      }
-    }
+    "source": "源代码与自部署指南"
   },
   "integrations": {
     "eyebrow": "面向开发者与 Agent",

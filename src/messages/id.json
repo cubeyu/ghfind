@@ -1412,8 +1412,7 @@
       "subtitle": "Beri label pada Issue dan PR berdasarkan skor penulis atau konten. Kelola otomatisasi melalui konsol Bot.",
       "admin": "Buka konsol Bot",
       "install": "Instal di GitHub",
-      "status": "Beranda Bot",
-      "note": "Berjalan sebagai ghfind-review[bot]. Hanya menambahkan label — tidak pernah berkomentar, menutup, atau memblokir kiriman."
+      "status": "Beranda Bot"
     },
     "console": {
       "heading": "Ruang kerja Bot Anda",
@@ -1533,40 +1532,10 @@
       "stop": {
         "heading": "Jeda atau hapus Bot",
         "body": "Jeda pemrosesan per repositori dari konsol, atau hapus App melalui pengaturan GitHub. Label yang sudah ada tetap tersimpan; gunakan pembersihan untuk meninjau perubahan Bot yang memenuhi syarat secara terpisah."
-      },
-      "rescore": {
-        "heading": "Minta penilaian ulang",
-        "body": "Setelah percobaan ulang otomatis, penulis atau admin repositori dapat berkomentar @ghfind-review di issue untuk menilai ulang."
       }
     },
     "disclaimer": "Skor mencerminkan profil GitHub publik penulis, bukan kualitas kontribusi ini. Kontributor baru mungkin hanya memiliki riwayat publik yang singkat.",
-    "source": "Kode sumber dan panduan hosting mandiri",
-    "preview": {
-      "label": "Contoh daftar issue dengan label review",
-      "heading": "Issues",
-      "items": {
-        "top": "Crash saat mengurai konfigurasi bertingkat",
-        "medium": "Tambah mode gelap di pengaturan",
-        "noScore": "Salah ketik di README"
-      }
-    },
-    "steps": {
-      "heading": "Cara kerja",
-      "items": {
-        "install": {
-          "title": "Pasang di repositori pilihan",
-          "body": "Beri izin baca & tulis untuk Issues dan Pull requests. Pilih Only select repositories untuk mulai kecil; repo organisasi mungkin perlu persetujuan owner."
-        },
-        "open": {
-          "title": "Seseorang membuka issue atau PR",
-          "body": "Bot mencari skor ghfind publik penulis di latar belakang. Isi issue tidak pernah dibaca atau dinilai."
-        },
-        "label": {
-          "title": "Label review: muncul",
-          "body": "Saat dipasang, halaman awal issue dan PR yang masih terbuka juga diberi label. Edit atau buka ulang tidak dinilai ulang."
-        }
-      }
-    }
+    "source": "Kode sumber dan panduan hosting mandiri"
   },
   "integrations": {
     "eyebrow": "For developers and agents",

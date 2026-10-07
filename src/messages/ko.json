@@ -1412,8 +1412,7 @@
       "subtitle": "작성자 점수나 콘텐츠에 따라 라벨을 붙이고, Bot 콘솔에서 자동화를 관리하세요.",
       "admin": "Bot 콘솔 열기",
       "install": "GitHub에 설치",
-      "status": "Bot 홈",
-      "note": "ghfind-review[bot]으로 동작합니다. 라벨만 붙이며 댓글, 닫기, 차단은 하지 않습니다."
+      "status": "Bot 홈"
     },
     "console": {
       "heading": "나의 Bot 작업 공간",
@@ -1533,40 +1532,10 @@
       "stop": {
         "heading": "Bot 일시 중지 또는 제거",
         "body": "콘솔에서 저장소별 처리를 일시 중지하거나 GitHub 설정에서 App을 제거하세요. 기존 라벨은 유지됩니다. Bot 변경을 되돌리려면 정리 기능에서 대상 항목을 별도로 확인하세요."
-      },
-      "rescore": {
-        "heading": "재채점 요청",
-        "body": "자동 재시도 이후에는 작성자나 저장소 관리자가 issue에 @ghfind-review 댓글을 달면 다시 채점합니다."
       }
     },
     "disclaimer": "점수는 작성자의 공개 GitHub 프로필을 반영하며, 이번 기여의 품질을 나타내지 않습니다. 새 기여자는 공개 기록이 짧을 뿐일 수 있습니다.",
-    "source": "소스 코드 및 자체 호스팅 안내",
-    "preview": {
-      "label": "review 라벨이 붙은 issue 목록 예시",
-      "heading": "Issues",
-      "items": {
-        "top": "중첩 설정 파싱 시 크래시",
-        "medium": "설정 화면에 다크 모드 추가",
-        "noScore": "README 오타"
-      }
-    },
-    "steps": {
-      "heading": "작동 방식",
-      "items": {
-        "install": {
-          "title": "저장소를 골라 설치",
-          "body": "Issues와 Pull requests 읽기·쓰기 권한을 허용합니다. Only select repositories로 작게 시작하세요. 조직 저장소는 소유자 승인이 필요할 수 있습니다."
-        },
-        "open": {
-          "title": "누군가 issue나 PR을 엶",
-          "body": "bot이 백그라운드에서 작성자의 공개 ghfind 점수를 조회합니다. issue 본문은 읽거나 평가하지 않습니다."
-        },
-        "label": {
-          "title": "review: 라벨이 붙음",
-          "body": "설치 시 기존 Open issue와 PR의 앞쪽 페이지에도 라벨을 붙입니다. 수정이나 다시 열기로는 재채점하지 않습니다."
-        }
-      }
-    }
+    "source": "소스 코드 및 자체 호스팅 안내"
   },
   "integrations": {
     "eyebrow": "For developers and agents",

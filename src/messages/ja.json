@@ -1412,8 +1412,7 @@
       "subtitle": "投稿者スコアや内容に基づくラベル付けと自動処理を、Bot コンソールでまとめて管理。",
       "admin": "Bot コンソールを開く",
       "install": "GitHub にインストール",
-      "status": "Bot ホーム",
-      "note": "ghfind-review[bot] として動作します。ラベルを付けるだけで、コメント・クローズ・ブロックは一切しません。"
+      "status": "Bot ホーム"
     },
     "console": {
       "heading": "Bot のワークスペース",
@@ -1533,40 +1532,10 @@
       "stop": {
         "heading": "Bot を一時停止・削除する",
         "body": "コンソールでリポジトリごとの処理を一時停止するか、GitHub の設定から App を削除できます。既存のラベルは残ります。Bot の変更を取り消す場合は、クリーンアップで対象を別途確認してください。"
-      },
-      "rescore": {
-        "heading": "再採点を依頼する",
-        "body": "自動再試行の後は、作成者またはリポジトリ管理者が issue に @ghfind-review とコメントすると再採点されます。"
       }
     },
     "disclaimer": "スコアが示すのは投稿者の公開 GitHub プロフィールであり、この投稿の品質ではありません。新しい貢献者は公開履歴が短いだけかもしれません。",
-    "source": "ソースコードとセルフホストガイド",
-    "preview": {
-      "label": "review ラベル付きの issue 一覧の例",
-      "heading": "Issues",
-      "items": {
-        "top": "ネストした設定の解析でクラッシュ",
-        "medium": "設定画面にダークモードを追加",
-        "noScore": "README の誤字"
-      }
-    },
-    "steps": {
-      "heading": "仕組み",
-      "items": {
-        "install": {
-          "title": "リポジトリを選んでインストール",
-          "body": "Issues と Pull requests の読み書きを許可します。まずは Only select repositories で小さく始めましょう。組織リポジトリはオーナーの承認が必要な場合があります。"
-        },
-        "open": {
-          "title": "誰かが issue や PR を作成",
-          "body": "bot がバックグラウンドで作成者の公開 ghfind スコアを取得します。issue 本文は読まず、評価もしません。"
-        },
-        "label": {
-          "title": "review: ラベルが付く",
-          "body": "インストール時には既存の Open な issue と PR の先頭ページにも付与されます。編集や再オープンでは再採点しません。"
-        }
-      }
-    }
+    "source": "ソースコードとセルフホストガイド"
   },
   "integrations": {
     "eyebrow": "For developers and agents",

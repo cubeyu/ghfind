@@ -1412,8 +1412,7 @@
       "subtitle": "Rotule Issues e PRs por pontuação do autor ou conteúdo. Gerencie a automação pelo console do Bot.",
       "admin": "Abrir console do Bot",
       "install": "Instalar no GitHub",
-      "status": "Página inicial do Bot",
-      "note": "Roda como ghfind-review[bot]. Só adiciona rótulos: nunca comenta, fecha ou bloqueia uma contribuição."
+      "status": "Página inicial do Bot"
     },
     "console": {
       "heading": "Seu espaço de trabalho do Bot",
@@ -1533,40 +1532,10 @@
       "stop": {
         "heading": "Pausar ou remover o Bot",
         "body": "Pause o processamento por repositório no console ou remova a App nas configurações do GitHub. As etiquetas existentes permanecem; use a limpeza para revisar separadamente as alterações do Bot que podem ser removidas."
-      },
-      "rescore": {
-        "heading": "Pedir nova pontuação",
-        "body": "Depois das novas tentativas automáticas, o autor ou um admin do repositório pode comentar @ghfind-review no issue para pontuar de novo."
       }
     },
     "disclaimer": "A pontuação reflete o perfil público do GitHub do autor, não a qualidade desta contribuição. Novos colaboradores podem simplesmente ter um histórico público curto.",
-    "source": "Código-fonte e guia de hospedagem própria",
-    "preview": {
-      "label": "Exemplo de lista de issues com rótulos review",
-      "heading": "Issues",
-      "items": {
-        "top": "Falha ao analisar configuração aninhada",
-        "medium": "Adicionar modo escuro às configurações",
-        "noScore": "Erro de digitação no README"
-      }
-    },
-    "steps": {
-      "heading": "Como funciona",
-      "items": {
-        "install": {
-          "title": "Instale nos repositórios escolhidos",
-          "body": "Conceda leitura e escrita em Issues e Pull requests. Escolha Only select repositories para começar pequeno; repositórios de organização podem exigir aprovação."
-        },
-        "open": {
-          "title": "Alguém abre um issue ou PR",
-          "body": "O bot consulta em segundo plano a pontuação pública do autor no ghfind. O corpo do issue nunca é lido nem avaliado."
-        },
-        "label": {
-          "title": "Aparece um rótulo review:",
-          "body": "Na instalação, as primeiras páginas de issues e PRs abertos também são rotuladas. Edições e reaberturas não são repontuadas."
-        }
-      }
-    }
+    "source": "Código-fonte e guia de hospedagem própria"
   },
   "integrations": {
     "eyebrow": "For developers and agents",
