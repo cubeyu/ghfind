@@ -2,6 +2,7 @@
 
 import { useTranslations } from "next-intl";
 import { useEffect, useState } from "react";
+import { usePathname } from "@/i18n/navigation";
 import { fetchMe } from "@/lib/me-client";
 import { signInWithGitHub } from "@/lib/oauth-client";
 
@@ -28,10 +29,14 @@ const EXIT_MS = 300;
  */
 export function LoginNudge() {
   const t = useTranslations("loginNudge");
+  const pathname = usePathname();
+  // Bot authentication belongs to its admin site; keep the product entry clear.
+  const isBotIntroduction = pathname === "/github-bot";
   const [mounted, setMounted] = useState(false);
   const [visible, setVisible] = useState(false);
 
   useEffect(() => {
+    if (isBotIntroduction) return;
     try {
       const raw = localStorage.getItem(DISMISS_KEY);
       if (raw) {
@@ -59,7 +64,7 @@ export function LoginNudge() {
       alive = false;
       clearTimeout(timer);
     };
-  }, []);
+  }, [isBotIntroduction]);
 
   const dismiss = () => {
     try {
@@ -71,7 +76,7 @@ export function LoginNudge() {
     setTimeout(() => setMounted(false), EXIT_MS);
   };
 
-  if (!mounted) return null;
+  if (!mounted || isBotIntroduction) return null;
 
   return (
     <div
