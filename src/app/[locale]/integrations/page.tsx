@@ -1,7 +1,8 @@
 import type { Metadata } from "next";
 import { getTranslations, setRequestLocale } from "next-intl/server";
 import { auth } from "@/lib/auth";
-import { IntegrationsView, installCommand } from "@/components/pages/IntegrationsView";
+import { IntegrationsView } from "@/components/pages/IntegrationsView";
+import { installCommand } from "@/lib/integration-install";
 import { localeAlternates } from "@/lib/site";
 import { asTranslator } from "@/lib/translator";
 

@@ -2,15 +2,7 @@
 import { ArrowDownToLine, ArrowUpRight, BookOpen, Braces, KeyRound, Terminal } from "lucide-react";
 import { ApiTokenManager } from "@/components/integrations/ApiTokenManager";
 import { InstallCommand } from "@/components/integrations/InstallCommand";
-import { SITE_URL } from "@/lib/site";
 import type { Translator } from "@/lib/translator";
-
-/** The one-line installer for this deployment's origin. */
-export function installCommand(): string {
-  return SITE_URL === "https://ghfind.com"
-    ? "curl -fsSL https://ghfind.com/install.sh | bash"
-    : `curl -fsSL ${SITE_URL}/install.sh | GHFIND_INSTALL_HOST=${SITE_URL} bash`;
-}
 
 /** Body of the /integrations page, shared by the Next app and apps/web (see BlogViews). */
 export function IntegrationsView({ locale, t, signedIn, command }: { locale: string; t: Translator; signedIn: boolean; command: string }) {
@@ -23,7 +15,7 @@ export function IntegrationsView({ locale, t, signedIn, command }: { locale: str
 
     <section className="rounded-2xl border border-border bg-card p-5 sm:p-7">
       <div className="flex items-start gap-3"><span className="mt-0.5 rounded-lg bg-muted p-2"><Terminal size={19} /></span><div><h2 className="text-lg font-semibold">{t("install.heading")}</h2><p className="mt-1 text-sm leading-6 text-muted-foreground">{t("install.description")}</p></div></div>
-      <div className="mt-5 flex flex-col gap-3 rounded-xl bg-[#171717] p-3 text-white sm:flex-row sm:items-center sm:justify-between sm:p-4 dark:bg-[#101010]"><code className="min-w-0 break-all text-xs leading-6 sm:text-sm">{command}</code><InstallCommand command={command} label={t("install.copy")} copiedLabel={t("install.copied")} /></div>
+      <div className="mt-5 flex flex-col gap-3 rounded-xl bg-[#171717] p-3 text-white sm:flex-row sm:items-center sm:justify-between sm:p-4 dark:bg-[#101010]"><code dir="ltr" className="min-w-0 break-all text-xs leading-6 sm:text-sm">{command}</code><InstallCommand command={command} label={t("install.copy")} copiedLabel={t("install.copied")} /></div>
       <p className="mt-3 text-xs leading-5 text-muted-foreground">{t("install.requirement")}</p>
       <div className="mt-5 flex flex-wrap gap-x-5 gap-y-2 text-sm"><a className="inline-flex items-center gap-1.5 underline decoration-border underline-offset-4 hover:text-foreground" href="/cli"><BookOpen size={15} />{t("install.cliDocs")}<ArrowUpRight size={13} /></a><a className="inline-flex items-center gap-1.5 underline decoration-border underline-offset-4 hover:text-foreground" href="/skill"><Braces size={15} />{t("install.skill")}<ArrowUpRight size={13} /></a></div>
     </section>

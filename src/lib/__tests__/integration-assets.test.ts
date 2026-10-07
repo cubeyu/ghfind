@@ -23,8 +23,8 @@ describe("hosted CLI and Agent Skill assets", () => {
   });
 
   it("publishes the exact command shown on the integration page", () => {
-    // installCommand() lives in the view shared by the Next page and apps/web.
-    const page = readFileSync("src/components/pages/IntegrationsView.tsx", "utf8");
+    // Both SSR stacks pass this command into the shared interactive view.
+    const page = readFileSync("src/lib/integration-install.ts", "utf8");
     const installer = readFileSync("public/install.sh", "utf8");
     const docs = readFileSync("public/cli.md", "utf8");
     const productionCommand = "curl -fsSL https://ghfind.com/install.sh | bash";
