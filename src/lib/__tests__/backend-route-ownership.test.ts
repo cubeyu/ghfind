@@ -31,6 +31,8 @@ const REVIEWED_NEXT_API_ROUTES = new Set([
   // Per-account CLI/API token management (OAuth session + same-origin writes).
   "src/app/api/account/tokens/route.ts",
   "src/app/api/account/tokens/[id]/route.ts",
+  // Bearer personal token -> GitHub id, for the ghfind Review bot's CLI API.
+  "src/app/api/account/whoami/route.ts",
   "src/app/api/developers/route.ts",
   "src/app/api/feed/events/route.ts",
   "src/app/api/feed/preferences/route.ts",
