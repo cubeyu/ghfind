@@ -1408,7 +1408,7 @@
     },
     "hero": {
       "eyebrow": "ghfind Review · GitHub App",
-      "title": "Classifique Issues e PRs,\ncom você no controle.",
+      "title": "Issues e PRs,\nsob seu controle.",
       "subtitle": "Rotule Issues e PRs por pontuação do autor ou conteúdo. Gerencie a automação pelo console do Bot.",
       "admin": "Abrir console do Bot",
       "install": "Instalar no GitHub",
