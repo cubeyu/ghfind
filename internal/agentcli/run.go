@@ -12,6 +12,7 @@ import (
 
 type globalOptions struct {
 	Host           string
+	BotHost        string
 	APIKey         string
 	TurnstileToken string
 	GitHubToken    string
@@ -111,6 +112,8 @@ func Execute(args []string, stdout io.Writer, stderr io.Writer) int {
 		return exitError(stderr, fmt.Errorf("unknown update command"))
 	case "commands":
 		return runCommands(positional[1:], opts, stdout, stderr)
+	case "bot":
+		return runBot(positional[1:], opts, stdout, stderr)
 	case "auth":
 		if len(positional) > 1 && positional[1] == "status" {
 			return runAuthStatus(opts, stdout)
@@ -437,6 +440,7 @@ func runScore(args []string, opts globalOptions, stdout io.Writer, stderr io.Wri
 func parseArgs(args []string) ([]string, globalOptions, error) {
 	opts := globalOptions{
 		Host:           envFirst([]string{"GHFIND_HOST", "GITHUB_ROAST_HOST"}, DefaultHost),
+		BotHost:        envFirst([]string{"GHFIND_BOT_HOST"}, DefaultBotHost),
 		APIKey:         envFirst([]string{"GHFIND_API_KEY", "GITHUB_ROAST_API_KEY"}, ""),
 		TurnstileToken: envFirst([]string{"GHFIND_TURNSTILE_TOKEN", "GITHUB_ROAST_TURNSTILE_TOKEN"}, ""),
 		GitHubToken:    envFirst([]string{"GITHUB_TOKEN"}, ""),
@@ -451,8 +455,15 @@ func parseArgs(args []string) ([]string, globalOptions, error) {
 	for i := 0; i < len(args); i++ {
 		arg := args[i]
 		switch arg {
-		case "--version", "version":
+		case "--version":
 			opts.Version = true
+		case "version":
+			// Only as the command itself, not as a value such as --prompt version.
+			if len(positional) == 0 {
+				opts.Version = true
+			} else {
+				positional = append(positional, arg)
+			}
 		case "--json":
 			opts.JSON = true
 			opts.Output = "json"
