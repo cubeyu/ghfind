@@ -1400,20 +1400,147 @@
     "slotOpen": "Còn trống"
   },
   "githubBot": {
-    "metaTitle": "ghfind Review — GitHub App gắn nhãn issue và PR theo điểm của tác giả",
-    "metaDescription": "Cài GitHub App ghfind Review để gắn nhãn màu cho mọi issue và pull request mới, dựa trên điểm ghfind công khai của tác giả.",
+    "metaTitle": "ghfind Review | Bot GitHub để phân loại Issue và PR",
+    "metaDescription": "Quản lý nhãn điểm tác giả, phân loại nội dung tùy chọn, xem trước, xử lý các mục có sẵn và dọn dẹp qua bảng điều khiển Bot ghfind Review hoặc CLI.",
     "topline": {
       "section": "Tích hợp",
       "current": "GitHub Bot"
     },
     "hero": {
-      "eyebrow": "GitHub App · Miễn phí",
-      "title": "Phân loại issue và PR theo người tạo",
-      "subtitle": "ghfind Review gắn nhãn review: có màu cho mọi issue và pull request mới, dựa trên điểm ghfind công khai của tác giả. Không cần workflow, token hay secret.",
-      "install": "Cài trên GitHub",
-      "status": "Mở trang trạng thái",
+      "eyebrow": "ghfind Review · GitHub App",
+      "title": "Phân loại Issue và PR,\ndo bạn kiểm soát.",
+      "subtitle": "Gắn nhãn theo điểm tác giả hoặc nội dung. Quản lý tự động hóa qua bảng điều khiển Bot.",
+      "admin": "Mở bảng điều khiển Bot",
+      "install": "Cài đặt trên GitHub",
+      "status": "Trang chủ Bot",
       "note": "Chạy dưới tên ghfind-review[bot]. Chỉ gắn nhãn — không bình luận, đóng hay chặn bất kỳ đóng góp nào."
     },
+    "console": {
+      "heading": "Không gian làm việc Bot của bạn",
+      "note": "Đăng nhập bằng GitHub. Bảng điều khiển hiển thị các bản cài đặt và kho mã mà bạn có quyền truy cập.",
+      "items": {
+        "overview": {
+          "title": "Tổng quan",
+          "body": "Xem tổng quan các bản cài đặt GitHub của bạn."
+        },
+        "repositories": {
+          "title": "Kho mã",
+          "body": "Cấu hình nhãn, tạm dừng hoặc tiếp tục xử lý."
+        },
+        "tasks": {
+          "title": "Tác vụ",
+          "body": "Theo dõi tiến độ xử lý các mục có sẵn và thử lại tác vụ thất bại."
+        },
+        "activity": {
+          "title": "Hoạt động",
+          "body": "Xem các thay đổi cấu hình và lịch sử dọn dẹp."
+        }
+      },
+      "preview": "Bảng điều khiển Bot · Dữ liệu demo cục bộ",
+      "screenshotAlt": "Dashboard Bot hiển thị tổng quan cài đặt, trạng thái kho mã, tác vụ và hoạt động gần đây."
+    },
+    "classification": {
+      "heading": "Hai loại nhãn. Hai tín hiệu khác nhau.",
+      "lead": "Phân biệt thông tin hồ sơ tác giả với chủ đề của nội dung đóng góp.",
+      "score": {
+        "mode": "Thông tin hồ sơ tác giả",
+        "title": "Nhãn điểm tác giả",
+        "body": "Với Issue và PR mới, Bot tra cứu điểm ghfind công khai của tác giả rồi gắn nhãn review:. Điểm này mô tả hồ sơ công khai, không phản ánh chất lượng của đóng góp.",
+        "example": "Năm mức điểm, bao gồm nhãn no-score rõ ràng khi không có điểm."
+      },
+      "intent": {
+        "mode": "Tùy chọn · Mặc định tắt",
+        "title": "Phân loại nội dung",
+        "body": "So sánh tiêu đề và nội dung Issue hoặc PR với mô tả của các nhãn có sẵn mà bạn chọn. Khi được bật, bộ phân loại có thể thêm tối đa ba nhãn phù hợp mà không tạo mới hoặc đổi tên nhãn.",
+        "example": "Cần có dịch vụ phân loại đã được cấu hình. Thử gợi ý trong bảng điều khiển trước khi bật. Phân loại bằng AI độc lập với điểm tác giả và có thể cần chỉnh sửa."
+      }
+    },
+    "operations": {
+      "heading": "Xem trước. Sau đó quyết định.",
+      "lead": "Kiểm soát từng kho mã riêng biệt, với các thay đổi được ghi vào nhật ký hoạt động.",
+      "items": {
+        "preview": {
+          "title": "Thử gợi ý nhãn",
+          "body": "Thử mẫu Issue hoặc PR với các định nghĩa nhãn đã lưu. Bản xem trước không thay đổi GitHub và không lưu văn bản mẫu. Cần có dịch vụ phân loại đã được cấu hình."
+        },
+        "backfill": {
+          "title": "Xử lý các mục có sẵn",
+          "body": "Tự bắt đầu xử lý 1–100 Issue và PR đang mở gần đây nhất. Quá trình cài đặt chỉ khởi tạo nhãn điểm, không tự động xử lý các mục trong quá khứ."
+        },
+        "cleanup": {
+          "title": "Xem và hoàn tác thay đổi của Bot",
+          "body": "Xem trước những mục có thể xóa rồi xác nhận. Dọn dẹp chỉ xóa các thay đổi có thể xác định là do Bot này thực hiện; giữ lại nhãn được thêm lại thủ công và thay đổi không rõ nguồn gốc."
+        }
+      }
+    },
+    "cli": {
+      "heading": "Cùng các thao tác đó, từ terminal của bạn.",
+      "body": "CLI Go, JavaScript và Python hỗ trợ xem trạng thái, tạm dừng, tiếp tục, xử lý các mục có sẵn, thử lại và dọn dẹp. Dùng token được cấp quyền Bot rõ ràng; bạn vẫn cần quyền truy cập kho mã.",
+      "link": "Hướng dẫn CLI và API",
+      "example": "Lệnh ví dụ · thay owner/repo",
+      "note": "Lệnh cleanup xem trước những mục sẽ bị xóa. Cần xác nhận riêng để thực hiện."
+    },
+    "reference": {
+      "heading": "Nhãn điểm tác giả và bộ lọc tìm kiếm GitHub"
+    },
+    "labels": {
+      "heading": "Năm mức điểm tác giả",
+      "lead": "Các nhãn điểm còn thiếu được tạo khi cài đặt. Màu sắc và mô tả tùy chỉnh có sẵn được giữ nguyên.",
+      "items": {
+        "low": {
+          "range": "0 – 39",
+          "desc": "Ít tín hiệu từ hồ sơ công khai hơn."
+        },
+        "medium": {
+          "range": "40 – 69",
+          "desc": "Tín hiệu hồ sơ công khai ở mức trung bình."
+        },
+        "high": {
+          "range": "70 – 89",
+          "desc": "Tín hiệu hồ sơ công khai mạnh hơn."
+        },
+        "top": {
+          "range": "90 – 100",
+          "desc": "Mức cao nhất của chỉ số ghfind."
+        },
+        "noScore": {
+          "range": "Không có điểm",
+          "desc": "Chưa có điểm không có nghĩa là điểm bằng không. Lỗi tạm thời được thử lại sau 20 và 60 phút."
+        }
+      }
+    },
+    "queues": {
+      "heading": "Lọc trên GitHub",
+      "lead": "Dán bộ lọc vào ô tìm kiếm Issues của kho mã. Thay is:issue bằng is:pr để tìm pull request.",
+      "items": {
+        "high": "Mức điểm cao",
+        "top": "Mức điểm cao nhất",
+        "low": "Mức điểm thấp",
+        "noScore": "Điểm không khả dụng"
+      }
+    },
+    "notes": {
+      "heading": "Cài đặt, dữ liệu và quyền kiểm soát",
+      "install": {
+        "heading": "Bắt đầu với các kho mã đã chọn",
+        "body": "Cài GitHub App với quyền đọc và ghi Issues và Pull requests. Không cần thêm workflow, PAT hay secret vào kho mã. Kho mã của tổ chức có thể cần chủ sở hữu phê duyệt."
+      },
+      "privacy": {
+        "heading": "Tìm hiểu dữ liệu được xử lý",
+        "body": "Việc tính điểm sử dụng hồ sơ công khai của tác giả. Phân loại tùy chọn gửi tiêu đề, nội dung và mô tả của các nhãn đã chọn đến dịch vụ AI được cấu hình. Bình luận mặc định tắt; nếu bật, bình luận gồm phần giới thiệu và tóm tắt điểm tác giả, không phải đánh giá mã nguồn.",
+        "link": "Đọc thông báo quyền riêng tư"
+      },
+      "stop": {
+        "heading": "Tạm dừng hoặc gỡ Bot",
+        "body": "Tạm dừng xử lý từng kho mã từ bảng điều khiển hoặc gỡ App trong cài đặt GitHub. Các nhãn hiện có vẫn được giữ lại; dùng chức năng dọn dẹp để xem riêng những thay đổi của Bot có thể hoàn tác."
+      },
+      "rescore": {
+        "heading": "Yêu cầu chấm lại",
+        "body": "Sau các lần thử lại tự động, tác giả hoặc quản trị viên repo có thể bình luận @ghfind-review trong issue để chấm lại."
+      }
+    },
+    "disclaimer": "Điểm phản ánh hồ sơ GitHub công khai của tác giả, không phải chất lượng của đóng góp này. Người đóng góp mới có thể chỉ có lịch sử công khai ngắn.",
+    "source": "Mã nguồn và hướng dẫn tự lưu trữ",
     "preview": {
       "label": "Ví dụ danh sách issue có nhãn review",
       "heading": "Issues",
@@ -1421,32 +1548,6 @@
         "top": "Lỗi khi phân tích cấu hình lồng nhau",
         "medium": "Thêm chế độ tối cho phần cài đặt",
         "noScore": "Lỗi chính tả trong README"
-      }
-    },
-    "labels": {
-      "heading": "Năm nhãn, nhìn là biết",
-      "lead": "Nhãn còn thiếu sẽ được tạo khi cài. Màu hoặc mô tả bạn đã tùy chỉnh được giữ nguyên.",
-      "items": {
-        "low": {
-          "range": "0 – 39",
-          "desc": "Ít tín hiệu công khai. Nên xác minh nguồn trước."
-        },
-        "medium": {
-          "range": "40 – 69",
-          "desc": "Hồ sơ người đóng góp thông thường."
-        },
-        "high": {
-          "range": "70 – 89",
-          "desc": "Tín hiệu hồ sơ công khai mạnh."
-        },
-        "top": {
-          "range": "90 – 100",
-          "desc": "Nhóm dẫn đầu chỉ số ghfind."
-        },
-        "noScore": {
-          "range": "Không có điểm",
-          "desc": "Chưa lấy được điểm, không phải 0 điểm. Tự thử lại sau 20 và 60 phút."
-        }
       }
     },
     "steps": {
@@ -1465,34 +1566,7 @@
           "body": "Khi cài, các trang đầu của issue và PR đang mở cũng được gắn nhãn. Sửa hoặc mở lại sẽ không chấm lại."
         }
       }
-    },
-    "queues": {
-      "heading": "Biến khoảng điểm thành hàng đợi review",
-      "lead": "Dán bộ lọc vào ô tìm kiếm issue của repo và bắt đầu với hàng đợi phù hợp với thời gian của bạn.",
-      "items": {
-        "high": "Issue điểm cao",
-        "top": "Issue điểm cao nhất",
-        "low": "Issue điểm thấp cần xác minh",
-        "noScore": "Không có điểm — cần thêm bối cảnh"
-      }
-    },
-    "notes": {
-      "rescore": {
-        "heading": "Yêu cầu chấm lại",
-        "body": "Sau các lần thử lại tự động, tác giả hoặc quản trị viên repo có thể bình luận @ghfind-review trong issue để chấm lại."
-      },
-      "privacy": {
-        "heading": "Dữ liệu được dùng",
-        "body": "Không đọc mã nguồn hay nội dung issue. Chỉ lưu bản cài đặt, repo, số issue, điểm và trạng thái tác vụ; tác vụ đã xong bị xóa sau 30 ngày. Tác giả có email công khai nhận tối đa một email điểm mỗi 72 giờ, hủy đăng ký chỉ với một cú nhấp.",
-        "link": "Thông báo quyền riêng tư"
-      },
-      "stop": {
-        "heading": "Dừng bất cứ lúc nào",
-        "body": "Gỡ repo, tạm dừng hoặc gỡ cài đặt app trong phần cài đặt GitHub. Các nhãn hiện có vẫn được giữ."
-      }
-    },
-    "disclaimer": "Điểm phản ánh hồ sơ GitHub công khai của tác giả, không phải chất lượng của đóng góp này. Người mới có thể chỉ đơn giản là có ít dấu vết công khai.",
-    "source": "Mã nguồn và hướng dẫn tự triển khai"
+    }
   },
   "integrations": {
     "eyebrow": "For developers and agents",
