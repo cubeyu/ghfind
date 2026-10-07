@@ -1400,20 +1400,147 @@
     "slotOpen": "Espaço disponível"
   },
   "githubBot": {
-    "metaTitle": "ghfind Review — GitHub App que rotula issues e PRs pela pontuação do autor",
-    "metaDescription": "Instale a GitHub App ghfind Review para adicionar um rótulo colorido a cada novo issue e pull request, com base na pontuação pública do autor no ghfind.",
+    "metaTitle": "ghfind Review | Bot do GitHub para classificar Issues e PRs",
+    "metaDescription": "Gerencie etiquetas de pontuação do autor, classificação opcional de conteúdo, prévias, processamento de envios existentes e limpeza pelo console do Bot ghfind Review ou pela CLI.",
     "topline": {
       "section": "Integrações",
       "current": "GitHub Bot"
     },
     "hero": {
-      "eyebrow": "GitHub App · Grátis",
-      "title": "Faça a triagem de issues e PRs por quem os abriu",
-      "subtitle": "O ghfind Review adiciona um rótulo review: colorido a cada novo issue e pull request, com base na pontuação pública do autor no ghfind. Sem workflow, sem token, sem segredos para configurar.",
+      "eyebrow": "ghfind Review · GitHub App",
+      "title": "Classifique Issues e PRs,\ncom você no controle.",
+      "subtitle": "Rotule Issues e PRs por pontuação do autor ou conteúdo. Gerencie a automação pelo console do Bot.",
+      "admin": "Abrir console do Bot",
       "install": "Instalar no GitHub",
-      "status": "Abrir página de status",
+      "status": "Página inicial do Bot",
       "note": "Roda como ghfind-review[bot]. Só adiciona rótulos: nunca comenta, fecha ou bloqueia uma contribuição."
     },
+    "console": {
+      "heading": "Seu espaço de trabalho do Bot",
+      "note": "Entre com o GitHub. O console mostra as instalações e os repositórios aos quais você tem acesso.",
+      "items": {
+        "overview": {
+          "title": "Painel geral",
+          "body": "Uma visão geral das suas instalações do GitHub."
+        },
+        "repositories": {
+          "title": "Repositórios",
+          "body": "Configure etiquetas e pause ou retome o processamento."
+        },
+        "tasks": {
+          "title": "Tarefas",
+          "body": "Acompanhe o processamento de envios existentes e tente novamente as tarefas que falharam."
+        },
+        "activity": {
+          "title": "Atividade",
+          "body": "Confira alterações de configuração e o histórico de limpeza."
+        }
+      },
+      "preview": "Console do Bot · Dados de demonstração local",
+      "screenshotAlt": "Dashboard do Bot com visão geral das instalações, status dos repositórios, tarefas e atividades recentes."
+    },
+    "classification": {
+      "heading": "Dois tipos de etiquetas. Dois sinais diferentes.",
+      "lead": "Separe o contexto do perfil do autor do assunto da contribuição.",
+      "score": {
+        "mode": "Contexto do perfil do autor",
+        "title": "Etiquetas de pontuação do autor",
+        "body": "Para novos Issues e PRs, o Bot consulta a pontuação pública de ghfind do autor e aplica uma etiqueta review:. A pontuação descreve um perfil público, não a qualidade da contribuição.",
+        "example": "Cinco faixas de pontuação, incluindo uma etiqueta explícita no-score quando a pontuação não está disponível."
+      },
+      "intent": {
+        "mode": "Opcional · Desativada por padrão",
+        "title": "Classificação de conteúdo",
+        "body": "Compare o título e o corpo do Issue ou PR com as descrições das etiquetas existentes que você selecionar. Quando ativado, o classificador pode adicionar até três etiquetas correspondentes, sem criar nem renomear etiquetas.",
+        "example": "Requer um serviço de classificação configurado. Teste uma sugestão no console antes de ativar. A classificação por IA é independente da pontuação do autor e pode precisar de correção."
+      }
+    },
+    "operations": {
+      "heading": "Veja a prévia. Depois decida.",
+      "lead": "Controle cada repositório separadamente, com alterações registradas no histórico de atividade.",
+      "items": {
+        "preview": {
+          "title": "Testar uma sugestão de etiquetas",
+          "body": "Teste uma amostra de Issue ou PR com as definições de etiquetas salvas. A prévia não altera o GitHub nem salva o texto da amostra. Requer um serviço de classificação configurado."
+        },
+        "backfill": {
+          "title": "Processar envios existentes",
+          "body": "Inicie manualmente o processamento dos últimos 1–100 Issues e PRs abertos. A instalação apenas inicializa as etiquetas de pontuação; não inicia o processamento do histórico."
+        },
+        "cleanup": {
+          "title": "Revisar e desfazer alterações do Bot",
+          "body": "Confira as remoções elegíveis antes de confirmar. A limpeza só remove alterações atribuíveis a este Bot; etiquetas adicionadas novamente à mão e alterações de origem incerta são preservadas."
+        }
+      }
+    },
+    "cli": {
+      "heading": "Os mesmos controles, pelo terminal.",
+      "body": "As CLIs de Go, JavaScript e Python permitem consultar o status, pausar, retomar, processar envios existentes, tentar novamente e limpar. Use um token com permissões explícitas do Bot; o acesso ao repositório também é necessário.",
+      "link": "Guia de CLI e API",
+      "example": "Comandos de exemplo · substitua owner/repo",
+      "note": "O comando cleanup mostra uma prévia das remoções. É necessária uma confirmação separada para aplicá-las."
+    },
+    "reference": {
+      "heading": "Etiquetas de pontuação do autor e filtros de pesquisa do GitHub"
+    },
+    "labels": {
+      "heading": "Cinco faixas de pontuação do autor",
+      "lead": "As etiquetas de pontuação ausentes são criadas na instalação. Cores e descrições personalizadas existentes são preservadas.",
+      "items": {
+        "low": {
+          "range": "0 – 39",
+          "desc": "Menos sinais no perfil público."
+        },
+        "medium": {
+          "range": "40 – 69",
+          "desc": "Sinais do perfil público na faixa intermediária."
+        },
+        "high": {
+          "range": "70 – 89",
+          "desc": "Sinais mais fortes no perfil público."
+        },
+        "top": {
+          "range": "90 – 100",
+          "desc": "A faixa mais alta do índice ghfind."
+        },
+        "noScore": {
+          "range": "Sem pontuação",
+          "desc": "Indisponível não significa zero. Falhas temporárias são tentadas novamente após 20 e 60 minutos."
+        }
+      }
+    },
+    "queues": {
+      "heading": "Filtrar no GitHub",
+      "lead": "Cole um filtro na pesquisa de Issues do repositório. Substitua is:issue por is:pr para encontrar pull requests.",
+      "items": {
+        "high": "Faixa de pontuação alta",
+        "top": "Faixa de pontuação máxima",
+        "low": "Faixa de pontuação baixa",
+        "noScore": "Pontuação indisponível"
+      }
+    },
+    "notes": {
+      "heading": "Instalação, dados e controles",
+      "install": {
+        "heading": "Comece pelos repositórios selecionados",
+        "body": "Instale a GitHub App com acesso de leitura e escrita a Issues e Pull requests. Não é preciso adicionar workflow, PAT ou secret ao repositório. Repositórios de organizações podem exigir aprovação do proprietário."
+      },
+      "privacy": {
+        "heading": "Saiba o que é processado",
+        "body": "A pontuação usa o perfil público do autor. A classificação opcional envia o título, o corpo e as descrições das etiquetas selecionadas ao serviço de IA configurado. Os comentários ficam desativados por padrão; quando ativados, incluem uma introdução e um resumo da pontuação do autor, não uma revisão de código.",
+        "link": "Ler o aviso de privacidade"
+      },
+      "stop": {
+        "heading": "Pausar ou remover o Bot",
+        "body": "Pause o processamento por repositório no console ou remova a App nas configurações do GitHub. As etiquetas existentes permanecem; use a limpeza para revisar separadamente as alterações do Bot que podem ser removidas."
+      },
+      "rescore": {
+        "heading": "Pedir nova pontuação",
+        "body": "Depois das novas tentativas automáticas, o autor ou um admin do repositório pode comentar @ghfind-review no issue para pontuar de novo."
+      }
+    },
+    "disclaimer": "A pontuação reflete o perfil público do GitHub do autor, não a qualidade desta contribuição. Novos colaboradores podem simplesmente ter um histórico público curto.",
+    "source": "Código-fonte e guia de hospedagem própria",
     "preview": {
       "label": "Exemplo de lista de issues com rótulos review",
       "heading": "Issues",
@@ -1421,32 +1548,6 @@
         "top": "Falha ao analisar configuração aninhada",
         "medium": "Adicionar modo escuro às configurações",
         "noScore": "Erro de digitação no README"
-      }
-    },
-    "labels": {
-      "heading": "Cinco rótulos, uma olhada",
-      "lead": "Rótulos ausentes são criados na instalação. Cores ou descrições personalizadas são mantidas.",
-      "items": {
-        "low": {
-          "range": "0 – 39",
-          "desc": "Pouco sinal público. Verifique a origem primeiro."
-        },
-        "medium": {
-          "range": "40 – 69",
-          "desc": "Um perfil de contribuidor comum."
-        },
-        "high": {
-          "range": "70 – 89",
-          "desc": "Sinais públicos fortes."
-        },
-        "top": {
-          "range": "90 – 100",
-          "desc": "No topo do índice ghfind."
-        },
-        "noScore": {
-          "range": "Sem pontuação",
-          "desc": "Pontuação indisponível, não é zero. Nova tentativa após 20 e 60 minutos."
-        }
       }
     },
     "steps": {
@@ -1465,34 +1566,7 @@
           "body": "Na instalação, as primeiras páginas de issues e PRs abertos também são rotuladas. Edições e reaberturas não são repontuadas."
         }
       }
-    },
-    "queues": {
-      "heading": "Transforme faixas de pontuação em filas de revisão",
-      "lead": "Cole um filtro na busca de issues do seu repositório e comece pela fila que cabe no seu tempo.",
-      "items": {
-        "high": "Issues de pontuação alta",
-        "top": "Issues de pontuação máxima",
-        "low": "Issues de pontuação baixa para verificar",
-        "noScore": "Sem pontuação — precisa de contexto"
-      }
-    },
-    "notes": {
-      "rescore": {
-        "heading": "Pedir nova pontuação",
-        "body": "Depois das novas tentativas automáticas, o autor ou um admin do repositório pode comentar @ghfind-review no issue para pontuar de novo."
-      },
-      "privacy": {
-        "heading": "Quais dados usa",
-        "body": "Nada de código-fonte ou corpo de issues. Guarda só a instalação, o repositório, o número do issue, a pontuação e o estado do job; jobs concluídos são apagados após 30 dias. Autores com e-mail público podem receber no máximo um e-mail de pontuação a cada 72 horas, com descadastro em um clique.",
-        "link": "Aviso de privacidade"
-      },
-      "stop": {
-        "heading": "Pare quando quiser",
-        "body": "Remova repositórios, suspenda ou desinstale o app nas configurações do GitHub. Os rótulos existentes permanecem."
-      }
-    },
-    "disclaimer": "A pontuação reflete o perfil público do autor no GitHub, não a qualidade desta contribuição. Novos contribuidores podem apenas ter pouco histórico público.",
-    "source": "Código-fonte e guia de auto-hospedagem"
+    }
   },
   "integrations": {
     "eyebrow": "For developers and agents",
