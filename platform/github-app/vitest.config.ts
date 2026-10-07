@@ -41,6 +41,7 @@ export default defineConfig({
           "0005_comment_and_email_limits.sql",
           "0006_repo_settings.sql",
           "0007_bot_operations.sql",
+          "0008_byok.sql",
         ]
           .map((f) => readFileSync(`migrations/${f}`, "utf8"))
           .join("\n"),
