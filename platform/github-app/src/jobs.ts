@@ -472,32 +472,29 @@ async function processJob(env: Env, job: Job) {
   }
   const label = scoreToLabel(JSON.parse(job.score));
   const issueNumber = positive(job.pr);
-  await syncLabel(api, fullName, issueNumber, label);
-  // Issue comments are paused. Only the label is written. A bot comment makes
-  // GitHub send its own thread notification, separate from the score email.
-  // To post again, import syncComment from ./review and restore the calls below.
-  // const userId = Number(user.id);
-  // const allowNew =
-  //   Number.isInteger(userId) && userId > 0
-  //     ? await reserveIssueComment(
-  //         env,
-  //         job.installation,
-  //         positive(job.repository),
-  //         userId,
-  //         label === LABELS[4],
-  //       )
-  //     : true;
-  // await syncComment(
-  //   api,
-  //   fullName,
-  //   issueNumber,
-  //   user.login,
-  //   JSON.parse(job.score),
-  //   env.APP_SLUG,
-  //   env.EMAIL_ENABLED === "true",
-  //   allowNew,
-  // );
-  // Existing-PR backfill uses open-pr- / rescore-*-openpr- ids and does not email.
+  const current = await syncLabel(api, fullName, issueNumber, label);
+  // Rescore and mention jobs follow a first job that already had its chance.
+  const followUp =
+    rescoreGeneration(job.id) > 0 || job.id.startsWith("mention-");
+  if (
+    settings.triageEnabled &&
+    settings.allowedLabels.length &&
+    !followUp &&
+    triageConfigured(env)
+  )
+    await triage(
+      env,
+      api,
+      job.repository,
+      fullName,
+      issueNumber,
+      pr,
+      settings.allowedLabels,
+      repoLabels,
+      current,
+      deadline,
+    );
+  // Backfill uses open- / open-pr- / rescore-*-openpr- ids and does not email.
   // A newly opened pull request uses the same 72-hour quiet period as issues.
   if (env.EMAIL_ENABLED === "true" && !suppressesScoreEmail(job.id))
     await enqueueAuthorEmail(
