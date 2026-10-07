@@ -1,4 +1,5 @@
 import { github } from "./github";
+import { resolveAIEnv } from "./byok";
 import { repoLabels } from "./repo-labels";
 import { getSettings, triageConfigured } from "./settings";
 import { classifyIntent, type IntentResult } from "./triage";
@@ -32,7 +33,8 @@ export async function runIntentPreview(
   if ((kind !== "issue" && kind !== "pull_request") || !title || title.length > 256 || body.length > 8000 ||
     ["preview_kind", "preview_title", "preview_body"].some((key) => form.getAll(key).length > 1))
     throw new IntentPreviewError("invalid_input", 400);
-  if (!triageConfigured(env)) throw new IntentPreviewError("not_configured", 503);
+  const aiEnv = await resolveAIEnv(env, repository, fullName);
+  if (!triageConfigured(aiEnv)) throw new IntentPreviewError("not_configured", 503);
   const settings = await getSettings(env, repository, fullName);
   const labels = new Map((await repoLabels(api, fullName)).map((label) => [label.name, label]));
   const allowed = [...new Set(settings.allowedLabels)].filter((name) => labels.has(name) && name !== "." && name !== ".." && !name.toLowerCase().startsWith("review:"));
@@ -41,7 +43,7 @@ export async function runIntentPreview(
     .bind(`intent-preview:${repository}`, Math.floor(Date.now() / 60000) * 60000).first<{count:number}>();
   if (!rate || rate.count > 1) throw new IntentPreviewError("rate_limited", 429);
   try {
-    const classification = await classifyIntent(env, { title, body, ...(kind === "pull_request" ? { pull_request: {} } : {}) }, allowed, labels, Date.now() + 60_000);
+    const classification = await classifyIntent(aiEnv, { title, body, ...(kind === "pull_request" ? { pull_request: {} } : {}) }, allowed, labels, Date.now() + 60_000);
     return { kind, title, body, classification, candidateCount: allowed.length };
   } catch {
     // Never expose provider response details, credentials or issue text in errors.
