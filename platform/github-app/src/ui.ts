@@ -25,7 +25,6 @@ import {
   lastBackfill,
   putBackfill,
   retryJob,
-  putJob,
 } from "./jobs";
 import {
   getSettings,
@@ -1135,31 +1134,26 @@ async function renderUi(request: Request, env: Env): Promise<Response> {
         s.receivedTitle,
         `<p>${escape(s.receivedBody)}</p><a class="btn primary" href="/login?installation_id=${installation}">${escape(s.signIn)}</a>`,
       );
+    view.session = current.id;
     const api = github(current.token);
-    // The user-token endpoint intersects App installation scope with the user's
-    // current access. The query parameter alone never grants access to a job.
-    const repos = new Map<number, string>();
-    for (let page = 1; page <= 100; page++) {
-      const list = record(
-        await api(
-          `/user/installations/${installation}/repositories?per_page=100&page=${page}`,
-        ),
-      );
-      if (!Array.isArray(list.repositories))
-        throw new Error("Invalid repositories");
-      for (const item of list.repositories) {
-        const repo = record(item);
-        if (typeof repo.id === "number" && typeof repo.full_name === "string")
-          repos.set(repo.id, repo.full_name);
-      }
-      if (list.repositories.length < 100) break;
-    }
+    const repos = await accessibleRepos(api, installation);
     if (path === "/retry" && request.method === "POST") {
       if (request.headers.get("origin") !== url.origin)
         return new Response("Invalid origin", { status: 403 });
       const form = new URLSearchParams(await readTextBounded(request));
       if (form.get("csrf") !== current.id)
         return new Response("Invalid form", { status: 403 });
+      const returnsToTasks = form.get("return_to") === "tasks";
+      const returnParams = new URLSearchParams({ installation_id: installation });
+      if (url.searchParams.get("lang") === locale) returnParams.set("lang", locale);
+      if (returnsToTasks) {
+        try { parseAdminFilters(url.searchParams); }
+        catch { return new Response("Invalid filters", { status: 400 }); }
+        for (const key of ["repo_page", "q", "repository", "status", "kind", "task_page"]) {
+          const value = url.searchParams.get(key);
+          if (value) returnParams.set(key, value);
+        }
+      }
       const job = await env.DB.prepare(
         "SELECT * FROM jobs WHERE id=? AND installation=? AND state='failed'",
       )
@@ -1167,23 +1161,38 @@ async function renderUi(request: Request, env: Env): Promise<Response> {
         .first<Job>();
       if (!job?.repository || !repos.has(job.repository))
         return new Response("Not found", { status: 404 });
-      const repo = record(await api(`/repos/${repos.get(job.repository)}`));
-      if (record(repo.permissions).admin !== true)
+      if (!(await repoPermissions(api, repos.get(job.repository)!, job.repository)).admin)
         return new Response("Repository admin required", { status: 403 });
-      await putJob(env, { ...job, id: `retry-${crypto.randomUUID()}` });
+      await retryJob(env, job, Number(installation), repos.get(job.repository)!);
       await dispatch(env);
-      return redirect(`/setup?installation_id=${installation}`);
+      return redirect(`${returnsToTasks ? "/admin/tasks" : "/setup"}?${returnParams}`);
     }
     if (request.method !== "GET")
       return new Response("Method not allowed", { status: 405 });
-    const { results } = await env.DB.prepare(
-      "SELECT * FROM jobs WHERE installation=? ORDER BY updated DESC LIMIT 100",
-    )
-      .bind(Number(installation))
-      .all<Job>();
-    const visible = results.filter(
-      (x) => x.repository && repos.has(x.repository),
-    );
+    // Scope before LIMIT so unrelated repository jobs cannot displace the
+    // user's visible items. Small CTE batches respect D1's bind-parameter cap.
+    // The top 100 of their union must be in the top 100 of these sorted batches.
+    const candidates: Job[] = [];
+    const members = [...repos];
+    for (let start = 0; start < members.length; start += 25) {
+      const batch = members.slice(start, start + 25);
+      const { results: rows } = await env.DB.prepare(
+        `WITH permitted(repository,fullName) AS (VALUES ${batch.map(() => "(?,?)").join(",")})
+         SELECT j.* FROM jobs j JOIN permitted p ON p.repository=j.repository
+         WHERE j.installation=? AND lower(substr(j.full_name,1,instr(j.full_name,'/')-1))=lower(substr(p.fullName,1,instr(p.fullName,'/')-1))
+         ORDER BY lower(p.fullName) ASC,j.repository ASC,${JOINED_JOB_ITEM_ORDER_SQL} LIMIT 100`,
+      ).bind(...batch.flatMap(([id, name]) => [id, name]), Number(installation)).all<Job>();
+      candidates.push(...rows);
+    }
+    const results = candidates.sort((a,b) => compareJobsByItem(
+      { ...a, fullName: repos.get(a.repository!) }, { ...b, fullName: repos.get(b.repository!) },
+    )).slice(0,100);
+    const accessible = results.filter((x) => x.repository && repos.has(x.repository));
+    const permissions = new Map(await Promise.all(
+      [...new Set(accessible.map((x) => x.repository!))].map(async (id) =>
+        [id, await repoPermissions(api, repos.get(id)!, id)] as const),
+    ));
+    const visible = accessible.filter((x) => permissions.get(x.repository!)?.write);
     const kind = (value: string) =>
       escape(s.kinds[value as keyof typeof s.kinds] ?? value);
     const state = (value: string) =>
@@ -1191,13 +1200,13 @@ async function renderUi(request: Request, env: Env): Promise<Response> {
     const rows = visible
       .map(
         (job) =>
-          `<tr><td><a href="https://github.com/${escape(repos.get(job.repository!))}/labels">${escape(repos.get(job.repository!))}</a></td><td>${kind(job.kind)}${job.pr ? ` #${job.pr}` : ""}</td><td><span class="pill" data-state="${escape(job.state)}">${state(job.state)}</span>${job.result ? `<span class="result">${escape(job.result)}</span>` : ""}</td><td>${job.state === "failed" ? `<form method="post" action="/retry?installation_id=${installation}"><input type="hidden" name="csrf" value="${current.id}"><input type="hidden" name="id" value="${escape(job.id)}"><button class="btn">${escape(s.retry)}</button></form>` : ""}</td></tr>`,
+          `<tr><td><a href="https://github.com/${escape(repos.get(job.repository!))}/labels">${escape(repos.get(job.repository!))}</a></td><td>${kind(job.kind)}${job.pr ? ` #${job.pr}` : ""}</td><td><span class="pill" data-state="${escape(job.state)}">${state(job.state)}</span>${job.result ? `<span class="result">${escape(job.result)}</span>` : ""}</td><td>${job.state === "failed" && permissions.get(job.repository!)?.admin ? `<form method="post" action="/retry?installation_id=${installation}"><input type="hidden" name="csrf" value="${current.id}"><input type="hidden" name="id" value="${escape(job.id)}"><button class="btn">${escape(s.retry)}</button></form>` : ""}</td></tr>`,
       )
       .join("");
     return html(
       view,
       s.title,
-      `<h1 style="font-size:clamp(26px,3.4vw,34px);letter-spacing:-.8px;font-weight:650">${escape(s.title)}</h1><p class="lead" style="margin-top:8px">${escape(s.refresh)}</p><div class="card table">${visible.length ? `<table><thead><tr><th>${escape(s.repository)}</th><th>${escape(s.task)}</th><th>${escape(s.status)}</th><th>${escape(s.action)}</th></tr></thead><tbody>${rows}</tbody></table>` : `<p class="empty">${escape(s.empty)}</p>`}</div>`,
+      `<h1 style="font-size:clamp(26px,3.4vw,34px);letter-spacing:-.8px;font-weight:650">${escape(s.title)}</h1><p class="lead" style="margin-top:8px">${escape(s.refresh)} <a class="textlink" href="/admin?installation_id=${installation}">${escape(t.admin.title)}</a></p><div class="card table">${visible.length ? `<table><thead><tr><th>${escape(s.repository)}</th><th>${escape(s.task)}</th><th>${escape(s.status)}</th><th>${escape(s.action)}</th></tr></thead><tbody>${rows}</tbody></table>` : `<p class="empty">${escape(s.empty)}</p>`}</div>`,
     );
   }
   return new Response("Not found", { status: 404 });

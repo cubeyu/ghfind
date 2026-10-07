@@ -61,6 +61,18 @@ describe("SaaS dashboard navigation and operations",()=>{
   installations=[];const html=await(await get('/admin')).text();
   expect(html).toContain('class="admin-empty"');expect(html).not.toContain('class="kpi-strip"');expect(html).toContain('https://github.com/settings/installations');
  });
+ it("keeps legacy setup number-ordered and filters unauthorized history before its 100-row limit",async()=>{
+  await testEnv.DB.prepare(`WITH RECURSIVE seq(n) AS (SELECT 1 UNION ALL SELECT n+1 FROM seq WHERE n<110)
+   INSERT INTO jobs(id,installation,repository,full_name,pr,kind,state,created,due,updated)
+   SELECT 'hidden-'||n,10,999,'secret/hidden',n,'label','done',n,0,1000+n FROM seq`).run();
+  await testEnv.DB.batch([2,10,100,1].map((number,index)=>testEnv.DB.prepare("INSERT INTO jobs(id,installation,repository,full_name,pr,kind,state,created,due,updated) VALUES(?,10,100,?,?,'label','done',?,0,?)").bind('visible-'+number,repo,number,10-index,index*100)));
+  const first=await(await get('/setup?installation_id=10')).text();
+  const positions=[1,2,10,100].map(number=>first.indexOf(` #${number}</td>`));
+  expect(positions.every(position=>position>=0)).toBe(true);expect([...positions].sort((a,b)=>a-b)).toEqual(positions);expect(first).not.toContain('secret/hidden');
+  await testEnv.DB.prepare("UPDATE jobs SET updated=99999-updated").run();
+  const second=await(await get('/setup?installation_id=10')).text();
+  expect([1,2,10,100].map(number=>second.indexOf(` #${number}</td>`))).toEqual(positions);
+ });
  it("keeps installation management inside the selected workspace and every sidebar destination usable",async()=>{
   const html=await(await get("/admin/installations?installation_id=10&lang=zh")).text();
   expect(html).toContain('href="/admin?lang=zh"');
@@ -126,6 +138,15 @@ describe("SaaS dashboard navigation and operations",()=>{
   const redirect=new URL(response.headers.get('location')!,origin);
   expect(Object.fromEntries(redirect.searchParams)).toEqual({installation_id:'10',lang:'zh',repo_page:'3',q:'control',processing:'active'});
   for(const suffix of ['&return_processing=bad','&return_q='+encodeURIComponent('x'.repeat(101)),'&return_q=x&return_q=y'])expect((await get(`/admin/repo?${query}${suffix}`)).status).toBe(400);
+ });
+ it("returns a retried task to the same locale, page and validated filters",async()=>{
+  await testEnv.DB.prepare("INSERT INTO jobs(id,installation,repository,full_name,kind,state,created,due,updated) VALUES('ux-retry',10,100,?,'initialize','failed',1,1,1)").bind(repo).run();
+  const response=await post('/retry?installation_id=10&lang=ar&repo_page=3&q=control&status=failed&kind=initialize&task_page=2',new URLSearchParams({csrf,id:'ux-retry',return_to:'tasks'}));
+  expect(response.status).toBe(303);
+  const target=new URL(response.headers.get('location')!,origin);
+  expect(target.pathname).toBe('/admin/tasks');
+  expect(Object.fromEntries(target.searchParams)).toEqual({installation_id:'10',lang:'ar',repo_page:'3',q:'control',status:'failed',kind:'initialize',task_page:'2'});
+  expect(await testEnv.DB.prepare("SELECT state FROM jobs WHERE id='ux-retry'").first()).toEqual({state:'cancelled'});
  });
  it("has complete localized dashboard catalogs",()=>{
   const keys=Object.keys(ADMIN_MESSAGES.en);
