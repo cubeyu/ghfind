@@ -157,6 +157,11 @@ async function job(id = "job-1") {
     .bind(id)
     .first<Job>();
 }
+async function configure(value: Partial<RepoSettings>) {
+  const settings = { ...DEFAULT_SETTINGS, ...value };
+  await putSettings(testEnv, 10, 100, repo, settings, "admin");
+  await putBackfillLimit(testEnv, 10, 100, repo, settings.backfillLimit, "admin");
+}
 async function add(id = "job-1", kind: "label" | "initialize" = "label") {
   await putJob(testEnv, {
     id,
@@ -172,7 +177,7 @@ beforeAll(async () => {
 });
 beforeEach(async () => {
   await testEnv.DB.exec(
-    "DELETE FROM jobs; DELETE FROM sessions; DELETE FROM author_comment_once; DELETE FROM noscore_comment_budget;",
+    "DELETE FROM jobs; DELETE FROM sessions; DELETE FROM author_comment_once; DELETE FROM noscore_comment_budget; DELETE FROM repo_settings;",
   );
   fetchMock.activate();
   fetchMock.disableNetConnect();

@@ -10,12 +10,16 @@ import {
   repositoryName,
 } from "./github";
 import {
+  commentTemplate,
   initializeLabels,
   labels,
   LABELS,
   scoreToLabel,
+  syncComment,
   syncLabel,
 } from "./review";
+import { getSettings, llmConfigured, triageConfigured } from "./settings";
+import { introFor, triage } from "./triage";
 
 export interface Job {
   id: string;
@@ -354,7 +358,20 @@ async function processJob(env: Env, job: Job) {
     await finish(env, job, "cancelled", "Issue or pull request closed");
     return;
   }
-  await initializeLabels(api, fullName);
+  // Checked at execution so queued, mention and rescore jobs obey a toggle change.
+  const settings = await getSettings(env, job.repository, fullName);
+  if (pr.pull_request ? !settings.prsEnabled : !settings.issuesEnabled) {
+    await finish(
+      env,
+      job,
+      "cancelled",
+      pr.pull_request
+        ? "Pull requests disabled for this repository"
+        : "Issues disabled for this repository",
+    );
+    return;
+  }
+  const repoLabels = await initializeLabels(api, fullName);
   if (rescoreGeneration(job.id) > 0) {
     const applied = await labels(
       api,

@@ -1,6 +1,7 @@
 import { sendAuthorEmails } from "./author-email";
 import { positive, readText, record, repositoryName } from "./github";
 import { admitMention, allowed, dispatch, putJob, runJob } from "./jobs";
+import { getSettings } from "./settings";
 import { ui } from "./ui";
 
 export async function verifySignature(
@@ -86,11 +87,16 @@ export async function webhook(request: Request, env: Env): Promise<Response> {
       const repo = record(payload.repository);
       const fullName = repositoryName(repo.full_name);
       if (!allowed(env, fullName)) return new Response("Outside rollout");
+      const repository = positive(repo.id);
+      // Execution rechecks the toggle; skipping here only avoids queue noise.
+      const settings = await getSettings(env, repository, fullName);
+      if (event === "issues" ? !settings.issuesEnabled : !settings.prsEnabled)
+        return new Response("Disabled for this repository");
       await putJob(env, {
         id: delivery,
         installation,
         kind: "label",
-        repository: positive(repo.id),
+        repository,
         full_name: fullName,
         pr: positive(
           event === "issues" ? record(payload.issue).number : payload.number,
