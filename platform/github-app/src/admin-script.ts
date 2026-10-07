@@ -36,7 +36,11 @@ pickers.forEach(p=>{const trigger=p.querySelector('summary'),links=()=>[...p.que
 });
 document.addEventListener('click',e=>{if(!pickers.some(p=>p.contains(e.target)))closePickers()});
 menu?.addEventListener('click',()=>closePickers());
-const settingsForm=document.querySelector('form[action^="/admin/repo?"]'),language=document.getElementById('lang'),originalLanguage=language?.value;
+const aiForm=document.querySelector('.ai-provider-form');
+const syncAIFields=()=>{if(!aiForm)return;const own=aiForm.querySelector('input[name=mode]:checked')?.value==='byok',fields=aiForm.querySelector('[data-ai-byok-fields]'),platform=aiForm.querySelector('[data-ai-platform-hint]');if(fields)fields.hidden=!own;if(platform)platform.hidden=own;['base_url','model'].forEach(name=>{const input=aiForm.querySelector('[name='+name+']');if(input)input.required=own})};
+aiForm?.addEventListener('change',e=>{if(e.target.name==='mode')syncAIFields()});syncAIFields();
+document.querySelectorAll('[data-key-visibility]').forEach(button=>button.addEventListener('click',()=>{const input=document.getElementById(button.getAttribute('aria-controls'));if(!input)return;const show=input.type==='password';input.type=show?'text':'password';button.setAttribute('aria-pressed',String(show));button.textContent=show?button.dataset.hide:button.dataset.show}));
+const settingsForm=document.querySelector('form[data-settings-form],form[action^="/admin/repo?"]'),language=document.getElementById('lang'),originalLanguage=language?.value;
 const snapshot=()=>settingsForm?JSON.stringify([...new FormData(settingsForm)].map(([key,value])=>[key,typeof value==='string'?value:value.name])):'';
 const initialSettings=snapshot();let leaving=false;
 const dirty=()=>!!settingsForm&&!leaving&&snapshot()!==initialSettings;
@@ -55,7 +59,7 @@ document.addEventListener('submit',e=>{const form=e.target;if(!(form instanceof 
  if(form===settingsForm)leaving=true;form.setAttribute('aria-busy','true');form.setAttribute('data-pending','');buttons.forEach(b=>b.setAttribute('aria-disabled','true'));if(e.submitter?.tagName==='BUTTON')e.submitter.textContent=app?.dataset.submitting||'Submitting…';
  state.status.className='form-pending';state.status.setAttribute('role','status');state.status.textContent=app?.dataset.submitHint||'Waiting for the server.';form.append(state.status);pending.set(form,state);
 });
-addEventListener('pageshow',e=>{restoreForms();if(e.persisted){leaving=false;if(side?.hasAttribute('data-open'))setOpen(false);closePickers()}});
+addEventListener('pageshow',e=>{restoreForms();syncAIFields();if(e.persisted){leaving=false;if(side?.hasAttribute('data-open'))setOpen(false);closePickers()}});
 document.querySelectorAll('[data-local-filter]').forEach(form=>{const search=form.querySelector('input[type=search]'),status=form.querySelector('select[name=processing]'),clear=form.querySelector('[data-search-clear]'),rows=[...document.querySelectorAll('[data-repo-row]')],empty=document.querySelector('[data-filter-empty]');
  const filter=sync=>{const q=(search?.value||'').trim().toLowerCase(),s=status?.value||'';let count=0;rows.forEach(row=>{const visible=(!q||row.dataset.repoName.toLowerCase().includes(q))&&(!s||row.dataset.processing===s);row.hidden=!visible;if(visible)count++});if(empty)empty.hidden=count>0;if(clear)clear.hidden=!search?.value;
   if(sync){const u=new URL(location.href);if(search?.value.trim())u.searchParams.set('q',search.value.trim());else u.searchParams.delete('q');if(s)u.searchParams.set('processing',s);else u.searchParams.delete('processing');history.replaceState(history.state,'',u.pathname+u.search+u.hash);document.querySelectorAll('[data-repo-pagination] a,[data-repo-settings],[data-repo-row] a[href^="/admin/repo?"],[data-repo-toggle]').forEach(element=>{const attribute=element.tagName==='FORM'?'action':'href',link=new URL(element.getAttribute(attribute),location.origin),prefix=element.closest('[data-repo-pagination]')?'':'return_';[['q',search?.value.trim()||''],['processing',s]].forEach(([key,value])=>{if(value)link.searchParams.set(prefix+key,value);else link.searchParams.delete(prefix+key)});element.setAttribute(attribute,link.pathname+link.search)})}

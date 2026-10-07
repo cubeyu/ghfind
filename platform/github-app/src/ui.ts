@@ -1,11 +1,13 @@
 import { ADMIN_STYLE } from "./admin-style";
 import { ADMIN_SCRIPT } from "./admin-script";
-import { ADMIN_MESSAGES } from "./admin-i18n";
+import { ADMIN_MESSAGES, aiAuditLabel } from "./admin-i18n";
 import { loadAdminData, parseAdminFilters } from "./admin-data";
 import { loadGlobalAdminData, GLOBAL_ACCOUNT_PAGE_SIZE, type GlobalRepositoryScope } from "./admin-global-data";
 import { JOINED_JOB_ITEM_ORDER_SQL, compareJobsByItem } from "./job-display-order";
 import { adminShell, adminLink, pageHead, installationPage, dashboardPage, globalDashboardPage, repositoriesPage, tasksPage, activityPage, type AdminContext } from "./admin-ui";
 import { runIntentPreview, IntentPreviewError, type IntentPreviewResult } from "./intent-preview";
+import { getAIProvider, putAIProvider, removeAIProviderKey, resolveAIEnv, AIProviderError } from "./byok";
+import { testAIProvider } from "./provider-test";
 import { seal, unseal } from "./secrets";
 import { audit, recentAudit } from "./audit";
 import {
@@ -524,10 +526,10 @@ function activityDetail(a: Messages["admin"], x: AuditEntry) {
         : null;
   }
 }
-function activityCard(a: Messages["admin"], log: AuditEntry[]) {
+function activityCard(a: Messages["admin"], log: AuditEntry[], locale: Locale) {
   const items = log
     .map((x) => {
-      const label = a.activityActions[x.action as keyof typeof a.activityActions] ?? x.action;
+      const label = aiAuditLabel(locale, x.action) ?? a.activityActions[x.action as keyof typeof a.activityActions] ?? x.action;
       const detail = activityDetail(a, x);
       const via = a.activityVia[x.via as keyof typeof a.activityVia] ?? x.via;
       return `<li><span class="what"><strong>${escape(label)}</strong>${detail ? ` <span class="muted">· <bdi>${escape(detail)}</bdi></span>` : ""}</span><span class="who"><time dir="ltr" datetime="${escape(x.at)}">${escape(utc(Date.parse(x.at)))} UTC</time><bdi>${escape(x.actor)}</bdi><span class="state-text">${escape(via)}</span></span></li>`;
@@ -766,6 +768,9 @@ async function renderUi(request: Request, env: Env): Promise<Response> {
     path === "/admin/tasks" ||
     path === "/admin/activity" ||
     path === "/admin/toggle" ||
+    path === "/admin/ai-provider" ||
+    path === "/admin/ai-provider/test" ||
+    path === "/admin/ai-provider/remove" ||
     path === "/admin/intent-preview" ||
     path === "/admin/repo" ||
     path === "/admin/backfill" ||
@@ -804,6 +809,9 @@ async function renderUi(request: Request, env: Env): Promise<Response> {
       request.method !== "GET" ||
       path === "/admin/backfill" ||
       path === "/admin/toggle" ||
+      path === "/admin/ai-provider" ||
+      path === "/admin/ai-provider/test" ||
+      path === "/admin/ai-provider/remove" ||
       path === "/admin/intent-preview" ||
       path.startsWith("/admin/cleanup")
     )
@@ -898,7 +906,8 @@ async function renderUi(request: Request, env: Env): Promise<Response> {
     const query = new URL(target, url).searchParams.toString();
     const operationTab = path === "/admin/backfill" ? "backfill"
       : path.startsWith("/admin/cleanup") ? "cleanup"
-      : path === "/admin/intent-preview" ? "preview" : "settings";
+      : path === "/admin/intent-preview" ? "preview"
+      : path.startsWith("/admin/ai-provider") ? "ai" : "settings";
     const backTarget = operationTab === "settings" ? target : `${target}&tab=${operationTab}`;
     const invalid = (title = a.invalidTitle, body = a.invalidBody, status = 400) =>
       withStatus(
@@ -915,6 +924,48 @@ async function renderUi(request: Request, env: Env): Promise<Response> {
         ? user.login
         : null;
     };
+    const aiAction = ["/admin/ai-provider", "/admin/ai-provider/test", "/admin/ai-provider/remove"].includes(path);
+    let aiError: AIProviderError["code"] | undefined;
+    let aiStatus = 200;
+    let aiPermissions: Awaited<ReturnType<typeof repoPermissions>> | undefined;
+    if (request.method === "POST" && aiAction) {
+      aiPermissions = await repoPermissions(api, fullName, Number(repository));
+      if (!aiPermissions.admin) return new Response("Repository admin required", { status: 403 });
+      if (!form || ["mode", "provider", "base_url", "model", "api_key", "confirm_remove"].some(key => form!.getAll(key).length > 1)) return invalid();
+      if (path === "/admin/ai-provider/remove" && form.get("confirm_remove") !== "yes") return invalid();
+      try {
+        let result = "saved";
+        if (path === "/admin/ai-provider/test") {
+          const user = await login();
+          if (!user) return new Response("Invalid user", { status: 400 });
+          // Connection tests always use saved configuration, never the form's key.
+          const tested = await testAIProvider(env, Number(repository), fullName);
+          await audit(env, Number(repository), user, "web", "ai_provider.test", { provider: tested.provider, model: tested.model });
+          result = "tested";
+        } else {
+          const user = await login();
+          if (!user) return new Response("Invalid user", { status: 400 });
+          if (path === "/admin/ai-provider/remove") {
+            await removeAIProviderKey(env, Number(repository), fullName, user);
+            result = "removed";
+          } else {
+            const input: Record<string, unknown> = { mode: form.get("mode") };
+            if (input.mode !== "platform") {
+              for (const key of ["provider", "base_url", "model"]) input[key] = form.get(key);
+              const key = form.get("api_key");
+              if (key) input.api_key = key;
+            }
+            await putAIProvider(env, Number(repository), fullName, input, user);
+          }
+        }
+        return redirect(`${target}&tab=ai&ai=${result}`);
+      } catch (error) {
+        if (!(error instanceof AIProviderError)) throw error;
+        aiError = error.code; aiStatus = error.status;
+        // Never retain a submitted key or credential form values in the response.
+        form = undefined;
+      }
+    }
     if (request.method === "POST" && path === "/admin/toggle") {
       if (!(await repoAdmin(api, fullName, Number(repository)))) return new Response("Repository admin required", { status: 403 });
       if (!form || !["on", "off"].includes(form.get("enabled") ?? "")) return invalid();
@@ -1026,7 +1077,7 @@ async function renderUi(request: Request, env: Env): Promise<Response> {
       }
       return new Response("Not found", { status: 404 });
     }
-    if (request.method === "POST" && path !== "/admin/intent-preview") {
+    if (request.method === "POST" && path !== "/admin/intent-preview" && !aiAction) {
       if (!(await repoAdmin(api, fullName, Number(repository))))
         return new Response("Repository admin required", { status: 403 });
       if (!form) return invalid();
@@ -1056,10 +1107,14 @@ async function renderUi(request: Request, env: Env): Promise<Response> {
       await audit(env, Number(repository), user, "web", "settings.update", { changed });
       return redirect(`${target}&saved=1`);
     }
-    const permissions = previewPermissions ?? await repoPermissions(api, fullName, Number(repository));
+    const permissions = aiPermissions ?? previewPermissions ?? await repoPermissions(api, fullName, Number(repository));
     if (!permissions.write)
       return withStatus(simple(view, a.title, `<p>${escape(a.writeRequired)}</p><a class="btn" href="${escape(adminLink(view.admin, "/admin/repositories"))}">${escape(a.allRepositories)}</a>`), 404);
     const admin = permissions.admin;
+    const [aiProvider, scopedAIEnv] = await Promise.all([
+      getAIProvider(env, Number(repository), fullName),
+      resolveAIEnv(env, Number(repository), fullName),
+    ]);
     const [settings, labels, last, cleanup, log] = await Promise.all([
       getSettings(env, Number(repository), fullName),
       repoLabels(api, fullName),
@@ -1099,27 +1154,39 @@ async function renderUi(request: Request, env: Env): Promise<Response> {
         ? `<p class="status" data-on>${escape(a.backfillQueued)}</p>`
         : "";
     const d = ADMIN_MESSAGES[locale];
-    const selectedTab = path === "/admin/intent-preview" ? "preview" : url.searchParams.get("tab") ?? (url.searchParams.get("backfill") === "queued" ? "backfill" : "settings");
-    if (!["settings", "backfill", "cleanup", "activity", "preview"].includes(selectedTab)) return new Response("Invalid tab", { status: 400 });
-    const tabNames = { settings: d.settings, preview: d.preview, backfill: a.backfill, cleanup: a.cleanup, activity: a.activity };
+    const selectedTab = aiAction ? "ai" : path === "/admin/intent-preview" ? "preview" : url.searchParams.get("tab") ?? (url.searchParams.get("backfill") === "queued" ? "backfill" : "settings");
+    if (!["settings", "backfill", "cleanup", "activity", "preview", "ai"].includes(selectedTab)) return new Response("Invalid tab", { status: 400 });
+    const tabNames = { settings: d.settings, ai: d.aiService, preview: d.preview, backfill: a.backfill, cleanup: a.cleanup, activity: a.activity };
     const tabs = `<nav class="repo-tabs" aria-label="${escape(d.settings)}">${Object.entries(tabNames).map(([id,label])=>`<a href="${escape(adminLink(view.admin!,"/admin/repo",{repository:Number(repository),tab:id}))}"${selectedTab===id?' aria-current="page"':""}>${escape(label)}</a>`).join("")}</nav>`;
     const settingsPanel = `<div class="repo-settings" id="settings"><form method="post" action="${escape(target)}"><input type="hidden" name="csrf" value="${current.id}"><fieldset class="stack"${admin ? "" : " disabled"}><div class="settings-flow">
 <section class="setting-section"><div class="setting-description"><h2>${escape(a.processing)}</h2><p>${escape(d.processingHint)}</p></div><div class="setting-controls">${box("issues_enabled", settings.issuesEnabled, a.issues)}${box("prs_enabled", settings.prsEnabled, a.prs)}</div></section>
-<section class="setting-section"><div class="setting-description"><h2>${escape(a.comments)}</h2><p>${escape(a.promptHint)}</p></div><div class="setting-controls">${llmConfigured(env)?"":`<p class="notice">${escape(a.llmMissing)}</p>`}${box("comments_enabled", settings.commentsEnabled, a.commentsEnabled)}<label class="field"><strong>${escape(a.prompt)}</strong><textarea name="comment_prompt" maxlength="2000" rows="5">\n${escape(settings.commentPrompt)}</textarea></label></div></section>
-<section class="setting-section"><div class="setting-description"><h2>${escape(a.triage)}</h2><p>${escape(a.labelsHint)}</p><a class="textlink" href="https://github.com/${escape(fullName)}/labels">${escape(a.editLabels)} ↗</a></div><div class="setting-controls">${triageConfigured(env)?"":`<p class="notice">${escape(d.previewNotConfigured)}</p>`}${box("triage_enabled", settings.triageEnabled, a.triageEnabled)}<fieldset><legend>${escape(a.labels)}</legend>${items ? `<ul class="labels">${items}</ul>` : `<p class="empty">${escape(a.noLabels)}</p>`}</fieldset></div></section>
+<section class="setting-section"><div class="setting-description"><h2>${escape(a.comments)}</h2><p>${escape(a.promptHint)}</p></div><div class="setting-controls">${llmConfigured(scopedAIEnv)?"":`<p class="notice">${escape(d.aiGreetingsUnavailable)}</p>`}${box("comments_enabled", settings.commentsEnabled, a.commentsEnabled)}<label class="field"><strong>${escape(a.prompt)}</strong><textarea name="comment_prompt" maxlength="2000" rows="5">\n${escape(settings.commentPrompt)}</textarea></label></div></section>
+<section class="setting-section"><div class="setting-description"><h2>${escape(a.triage)}</h2><p>${escape(a.labelsHint)}</p><a class="textlink" href="https://github.com/${escape(fullName)}/labels">${escape(a.editLabels)} ↗</a></div><div class="setting-controls">${triageConfigured(scopedAIEnv)?"":`<p class="notice">${escape(d.previewNotConfigured)}</p>`}${box("triage_enabled", settings.triageEnabled, a.triageEnabled)}<fieldset><legend>${escape(a.labels)}</legend>${items ? `<ul class="labels">${items}</ul>` : `<p class="empty">${escape(a.noLabels)}</p>`}</fieldset></div></section>
 </div>${admin?`<div class="settings-save"><p>${escape(d.saveHint)}</p><button class="btn primary">${escape(a.save)}</button></div>`:""}</fieldset></form></div>`;
     const backfillPanel = `<div class="repo-operation"><div class="operation-main">${backfillNotice}${processingPaused ? `<p class="notice">${escape(a.backfillPaused)}</p>` : ""}<form id="backfill" method="post" action="/admin/backfill?${escape(query)}"><input type="hidden" name="csrf" value="${current.id}"><fieldset class="stack"${admin ? "" : " disabled"}><div><h2>${escape(a.backfill)}</h2><p class="result">${escape(a.backfillHint)}</p><p class="result">${escape(a.backfillStatusHint)}</p><label class="field" style="margin-top:12px"><strong>${escape(a.backfillLimit)}</strong><input type="number" name="backfill_limit" min="1" max="100" step="1" required value="${Math.min(Math.max(settings.backfillLimit, 1), 100)}"></label></div><p id="backfill-status" class="result">${escape(a.backfillLast)} ${last ? `<span class="state-text" data-state="${escape(last.state)}">${escape(t.setup.states[last.state as keyof typeof t.setup.states] ?? last.state)}</span> <time datetime="${new Date(last.updated).toISOString()}">${utc(last.updated)} UTC</time>${last.result ? ` · ${escape(last.result)}` : ""}` : escape(a.backfillNever)}</p>${admin ? `<p><button class="btn"${backfillBusy || processingPaused ? " disabled" : ""}>${escape(a.backfillButton)}</button></p>` : ""}</fieldset></form><div class="actions"><a class="btn" href="${escape(target)}&amp;tab=backfill">${escape(a.cleanRefresh)}</a><a class="textlink" href="${escape(adminLink(view.admin!,"/admin/tasks"))}">${escape(d.tasks)}</a></div></div><aside class="operation-help"><h2>${escape(a.backfill)}</h2><p>${escape(d.backfillHelp)}</p></aside></div>`;
     const cleanupPanel = `<div class="repo-operation">${cleanupCard(a, query, current.id, admin, cleanup, viewer)}<aside class="operation-help"><h2>${escape(a.cleanup)}</h2><p>${escape(d.cleanupHelp)}</p></aside></div>`;
-    const activityPanel = `<div class="repo-operation">${activityCard(a,log)}<aside class="operation-help"><h2>${escape(d.activity)}</h2><p>${escape(d.activityLead)}</p><div class="actions"><a class="btn" href="${escape(adminLink(view.admin!,"/admin/activity"))}">${escape(d.viewAll)}</a></div></aside></div>`;
+    const activityPanel = `<div class="repo-operation">${activityCard(a,log,locale)}<aside class="operation-help"><h2>${escape(d.activity)}</h2><p>${escape(d.activityLead)}</p><div class="actions"><a class="btn" href="${escape(adminLink(view.admin!,"/admin/activity"))}">${escape(d.viewAll)}</a></div></aside></div>`;
     const previewErrors = { invalid_input: d.previewInvalid, no_candidates: d.previewNoCandidates, not_configured: d.previewNotConfigured, rate_limited: d.previewRateLimited, classifier_unavailable: d.previewUnavailable };
     const previewTitle = previewResult?.title ?? (form?.get("preview_title") ?? "").slice(0,256);
     const previewBody = previewResult?.body ?? (form?.get("preview_body") ?? "").slice(0,8000);
     const previewKind = previewResult?.kind ?? (form?.get("preview_kind") === "pull_request" ? "pull_request" : "issue");
     const classification = previewResult?.classification;
     const previewOutput = previewError ? `<p class="notice" role="alert">${escape(previewErrors[previewError])}</p>` : classification ? `<div class="operation-main"><h2>${escape(d.previewSelected)}</h2><p>${classification.labels.length?classification.labels.map(name=>`<span class="state-text" data-state="done"><bdi>${escape(name)}</bdi></span>`).join(" "):escape(d.previewNoMatch)}</p><p class="result">${escape(d.previewCandidates)}: ${previewResult!.candidateCount} · ${escape(classification.provider)}${classification.model?` · <bdi>${escape(classification.model)}</bdi>`:""}${classification.threshold!==undefined?` · ${escape(d.previewThreshold)}: ${Math.round(classification.threshold*100)}%`:""}</p>${classification.probabilities?.length?`<div class="probabilities">${classification.probabilities.map(x=>`<div class="probability"><bdi>${escape(x.name)}</bdi><span dir="ltr">${(x.probability*100).toFixed(1)}%</span><meter min="0" max="1" value="${x.probability}" aria-label="${escape(x.name)}"></meter></div>`).join("")}</div>`:""}</div>` : "";
-    const previewPanel = `<div class="repo-operation"><div class="stack"><div class="operation-main"><h2>${escape(d.preview)}</h2><p class="result">${escape(d.previewLead)}</p><form class="preview-form" method="post" action="/admin/intent-preview?${escape(query)}"><input type="hidden" name="csrf" value="${current.id}"><fieldset class="stack"${admin?"":" disabled"}><label class="field"><strong>${escape(d.previewKind)}</strong><select name="preview_kind"><option value="issue"${previewKind!=="pull_request"?" selected":""}>${escape(d.issue)}</option><option value="pull_request"${previewKind==="pull_request"?" selected":""}>${escape(d.pullRequest)}</option></select></label><label class="field"><strong>${escape(d.previewTitle)}</strong><input type="text" name="preview_title" required maxlength="256" value="${escape(previewTitle)}"></label><label class="field"><strong>${escape(d.previewBody)}</strong><textarea name="preview_body" maxlength="8000" rows="5">${escape(previewBody)}</textarea></label>${admin?`<button class="btn primary">${escape(d.runPreview)}</button>`:""}</fieldset></form><p class="result">${escape(d.previewOnly)}</p></div>${previewOutput}</div><aside class="operation-help"><h2>${escape(d.preview)}</h2><p>${escape(d.previewDisclosure)}</p>${triageConfigured(env)?"":`<p class="notice">${escape(d.previewNotConfigured)}</p>`}<p class="result">${escape(d.previewCandidates)}: ${settings.allowedLabels.filter(name=>present.has(name)).length}</p><a class="textlink" href="${escape(adminLink(view.admin!,"/admin/repo",{repository:Number(repository),tab:"settings"}))}">${escape(d.settings)}</a></aside></div>`;
-    const panels = { settings: settingsPanel, backfill: backfillPanel, cleanup: cleanupPanel, activity: activityPanel, preview: previewPanel };
-    return withStatus(html(view,fullName,`<nav class="crumbs"><a class="textlink" href="${escape(adminLink(view.admin!,"/admin/repositories"))}">${escape(d.repositories)}</a><span>${escape(admin?d.admin:d.readOnly)}</span></nav>${pageHead(fullName,selectedTab==="settings"?d.settingsHint:tabNames[selectedTab as keyof typeof tabNames])}${notices?`<div class="notice-stack">${notices}</div>`:""}${tabs}${panels[selectedTab as keyof typeof panels]}`),previewStatus);
+    const previewPanel = `<div class="repo-operation"><div class="stack"><div class="operation-main"><h2>${escape(d.preview)}</h2><p class="result">${escape(d.previewLead)}</p><form class="preview-form" method="post" action="/admin/intent-preview?${escape(query)}"><input type="hidden" name="csrf" value="${current.id}"><fieldset class="stack"${admin?"":" disabled"}><label class="field"><strong>${escape(d.previewKind)}</strong><select name="preview_kind"><option value="issue"${previewKind!=="pull_request"?" selected":""}>${escape(d.issue)}</option><option value="pull_request"${previewKind==="pull_request"?" selected":""}>${escape(d.pullRequest)}</option></select></label><label class="field"><strong>${escape(d.previewTitle)}</strong><input type="text" name="preview_title" required maxlength="256" value="${escape(previewTitle)}"></label><label class="field"><strong>${escape(d.previewBody)}</strong><textarea name="preview_body" maxlength="8000" rows="5">${escape(previewBody)}</textarea></label>${admin?`<button class="btn primary">${escape(d.runPreview)}</button>`:""}</fieldset></form><p class="result">${escape(d.previewOnly)}</p></div>${previewOutput}</div><aside class="operation-help"><h2>${escape(d.preview)}</h2><p>${escape(d.previewDisclosure)}</p>${triageConfigured(scopedAIEnv)?"":`<p class="notice">${escape(d.previewNotConfigured)}</p>`}<p class="result">${escape(d.previewCandidates)}: ${settings.allowedLabels.filter(name=>present.has(name)).length}</p><a class="textlink" href="${escape(adminLink(view.admin!,"/admin/repo",{repository:Number(repository),tab:"settings"}))}">${escape(d.settings)}</a></aside></div>`;
+    const aiErrors: Record<AIProviderError["code"], string> = { invalid_config: d.aiInvalid, key_required: d.aiKeyRequired, storage_unavailable: d.aiStorageUnavailable, unavailable: d.aiUnavailable, rate_limited: d.aiRateLimited };
+    const aiMessages = { saved: d.aiSaved, tested: d.aiTested, removed: d.aiRemoved };
+    const aiResult = url.searchParams.get("ai") ?? "";
+    const aiFeedback = aiError ? `<p class="notice" role="alert">${escape(aiErrors[aiError])}</p>` : ["saved", "tested", "removed"].includes(aiResult) ? aiMessages[aiResult as keyof typeof aiMessages] : "";
+    const aiTarget = (path: string) => adminLink(view.admin!, path, { repository: Number(repository) });
+    const aiPanel = `<div class="repo-settings" id="ai-service"><noscript><style>[data-key-visibility]{display:none}</style></noscript>${aiFeedback ? (aiError ? aiFeedback : `<p class="status" role="status" data-on>${escape(aiFeedback)}</p>`) : ""}
+<form class="ai-provider-form" data-settings-form method="post" action="${escape(aiTarget("/admin/ai-provider"))}"><input type="hidden" name="csrf" value="${current.id}"><fieldset${admin ? "" : " disabled"}><div class="settings-flow">
+<section class="setting-section"><div class="setting-description"><h2>${escape(d.aiMode)}</h2><p>${escape(d.aiLead)}</p><p>${escape(d.aiPrivacy)}</p><p>${escape(d.aiNoFallback)}</p></div><div class="setting-controls"><label class="check"><input type="radio" name="mode" value="platform"${aiProvider.mode === "platform" ? " checked" : ""}><span>${escape(d.aiPlatform)}</span></label><label class="check"><input type="radio" name="mode" value="byok"${aiProvider.mode === "byok" ? " checked" : ""}><span>${escape(d.aiByok)}</span></label><p class="result" data-ai-platform-hint>${escape(d.aiPlatformHint)}</p><p class="result">${escape(d.aiSavedConfiguration)}: ${escape(aiProvider.mode === "platform" ? d.aiPlatform : d.aiByok)} · ${escape(aiProvider.ready ? d.aiReady : d.aiNotReady)}</p>${aiProvider.storageAvailable ? "" : `<p class="notice">${escape(d.aiStorageUnavailable)}</p>`}</div></section>
+<section class="setting-section" data-ai-byok-fields><div class="setting-description"><h2>${escape(d.aiByok)}</h2><p>${escape(d.aiCapabilities)}</p></div><div class="setting-controls ai-fields"><label class="field"><strong>${escape(d.aiProtocol)}</strong><select name="provider"><option value="llm"${aiProvider.provider === "llm" ? " selected" : ""}>${escape(d.aiOpenAI)}</option><option value="jev"${aiProvider.provider === "jev" ? " selected" : ""}>${escape(d.aiJev)}</option></select></label><label class="field"><strong>${escape(d.aiBaseUrl)}</strong><input type="url" name="base_url" dir="ltr" maxlength="2000" value="${escape(aiProvider.mode === "byok" ? aiProvider.baseUrl : "")}" spellcheck="false" autocomplete="off" placeholder="https://api.example.com/v1"></label><label class="field"><strong>${escape(d.aiModel)}</strong><input type="text" name="model" dir="ltr" maxlength="200" value="${escape(aiProvider.mode === "byok" ? aiProvider.model : "")}" spellcheck="false" autocomplete="off" aria-describedby="ai-model-hint"></label><p class="result" id="ai-model-hint">${escape(d.aiModelHint)}</p><label class="field" for="ai-api-key"><strong>${escape(d.aiKey)}</strong></label><div class="credential-field"><input id="ai-api-key" type="password" name="api_key" dir="ltr" maxlength="4096" autocomplete="new-password" spellcheck="false" aria-describedby="ai-key-state ai-key-hint"><button class="btn" type="button" data-key-visibility aria-controls="ai-api-key" aria-pressed="false" data-show="${escape(d.aiShowKey)}" data-hide="${escape(d.aiHideKey)}">${escape(d.aiShowKey)}</button></div><p class="result" id="ai-key-state">${escape(aiProvider.mode === "byok" && aiProvider.hasKey ? d.aiKeySaved : d.aiKeyMissing)}</p><p class="result" id="ai-key-hint">${escape(d.aiKeyHint)}</p></div></section>
+</div>${admin ? `<div class="settings-save"><p>${escape(d.saveHint)}</p><button class="btn primary">${escape(d.aiSave)}</button></div>` : ""}</fieldset></form>
+<section class="setting-section"><div class="setting-description"><h2>${escape(d.aiTest)}</h2><p>${escape(d.aiTestHint)}</p></div><div class="setting-controls"><form method="post" action="${escape(aiTarget("/admin/ai-provider/test"))}"><input type="hidden" name="csrf" value="${current.id}"><button class="btn"${admin && aiProvider.ready ? "" : " disabled"}>${escape(d.aiTest)}</button></form></div></section>
+${aiProvider.mode === "byok" && aiProvider.hasKey ? `<section class="setting-section"><div class="setting-description"><h2>${escape(d.aiRemove)}</h2><p>${escape(d.aiKeySaved)}</p></div><div class="setting-controls"><form method="post" action="${escape(aiTarget("/admin/ai-provider/remove"))}"><input type="hidden" name="csrf" value="${current.id}"><fieldset class="stack"${admin ? "" : " disabled"}><label class="check"><input type="checkbox" name="confirm_remove" value="yes" required><span>${escape(d.aiRemoveConfirm)}</span></label><button class="btn">${escape(d.aiRemove)}</button></fieldset></form></div></section>` : ""}</div>`;
+    const panels = { settings: settingsPanel, backfill: backfillPanel, cleanup: cleanupPanel, activity: activityPanel, preview: previewPanel, ai: aiPanel };
+    return withStatus(html(view,fullName,`<nav class="crumbs"><a class="textlink" href="${escape(adminLink(view.admin!,"/admin/repositories"))}">${escape(d.repositories)}</a><span>${escape(admin?d.admin:d.readOnly)}</span></nav>${pageHead(fullName,selectedTab==="settings"?d.settingsHint:selectedTab==="ai"?d.aiLead:tabNames[selectedTab as keyof typeof tabNames],selectedTab==="settings"?`<a class="btn" href="${escape(aiTarget("/admin/repo"))}&amp;tab=ai">${escape(d.aiService)}</a>`:"")}${notices?`<div class="notice-stack">${notices}</div>`:""}${tabs}${panels[selectedTab as keyof typeof panels]}`),aiAction ? aiStatus : previewStatus);
 
   }
   if (path === "/setup" || path === "/retry") {

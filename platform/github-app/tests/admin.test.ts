@@ -3,6 +3,7 @@ import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vite
 import { ui } from "../src/ui";
 import { seal } from "../src/secrets";
 import { getSettings } from "../src/settings";
+import { ADMIN_MESSAGES } from "../src/admin-i18n";
 
 declare const TEST_SQL: string[];
 const testEnv = env as Env;
@@ -206,7 +207,7 @@ describe("admin pages", () => {
     expect(text).toContain("Reply in Chinese &lt;b&gt;briefly&lt;/b&gt;");
     expect(text).toContain("tab=backfill");
     expect(text).toContain('class="settings-flow"');
-    expect(text).toContain("LLM key");
+    expect(text).toContain(ADMIN_MESSAGES.en.aiGreetingsUnavailable);
   });
   it("hides settings from users without write access, matching the API", async () => {
     const { cookie } = await signIn();
