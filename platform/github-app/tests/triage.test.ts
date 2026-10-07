@@ -280,6 +280,189 @@ describe("comments", () => {
     { id: 77, user: { login: `${slug}[bot]`, type: "Bot" }, body },
   ];
 
+  it("makes no comment API calls when comments are off", async () => {
+    await configure({ commentPrompt: "Be friendly." });
+    await add("delivery-1");
+    labelJob();
+    await runJob(llmEnv, "delivery-1");
+    expect((await job("delivery-1"))?.state).toBe("done");
+    expect(commentCalls()).toHaveLength(0);
+    expect(llmCalls()).toHaveLength(0);
+  });
+
+  it("posts one comment with the sanitized intro and intact template", async () => {
+    await configure({
+      commentsEnabled: true,
+      commentPrompt: "用中文，语气友好",
+    });
+    await add("delivery-1");
+    labelJob({ title: "SECRET TITLE", body: "SECRET BODY" });
+    llm = () =>
+      reply(
+        "## Hi @octocat and @org/team!\n<b>Welcome</b> <!-- see https://evil.example [x](http://y.z) ![i](https://img) #12 &#64;bob",
+      );
+    route(`${issuePath}/comments?per_page=100&page=1`, []);
+    route(`${issuePath}/comments`, { id: 1 }, "POST");
+    await runJob(llmEnv, "delivery-1");
+    expect((await job("delivery-1"))?.state).toBe("done");
+    const post = calls.find(
+      (x) => x.method === "POST" && x.url.endsWith("/comments"),
+    )!;
+    const body = JSON.parse(post.body).body as string;
+    expect(body.startsWith(`${COMMENT_MARKER}\nHi @\u200doctocat`)).toBe(true);
+    expect(body).toContain("@\u200dorg/team");
+    expect(body).toContain("#\u200d12");
+    expect(body.endsWith(template(82.7))).toBe(true);
+    expect(body).toContain("| 82.7 / 100 | `review: high` |");
+    const intro = body.slice(
+      COMMENT_MARKER.length + 1,
+      -template(82.7).length,
+    );
+    expect(intro).not.toMatch(/<|>|https?:|\]\(|@[A-Za-z]|&#|\n.*\n.*\n/);
+    expect(intro.length).toBeLessThanOrEqual(602);
+    const [sent] = llmCalls();
+    expect(sent.messages[0].content).toContain("用中文，语气友好");
+    expect(JSON.stringify(sent)).not.toContain("SECRET");
+    const facts = sent.messages[1].content.replace("Score facts (JSON): ", "");
+    expect(JSON.parse(facts)).toEqual({
+      author: "AsperforMias",
+      score: 82.7,
+      level: LABELS[2],
+    });
+  });
+
+  it("does not regenerate or PATCH on a replay", async () => {
+    await configure({ commentsEnabled: true, commentPrompt: "Be friendly." });
+    await add("delivery-1");
+    labelJob();
+    route(
+      `${issuePath}/comments?per_page=100&page=1`,
+      own(composeComment("Earlier intro.", template(82.7))),
+    );
+    await runJob(llmEnv, "delivery-1");
+    expect((await job("delivery-1"))?.state).toBe("done");
+    expect(llmCalls()).toHaveLength(0);
+  });
+
+  it("drops a no-score intro when a rescore finds a score", async () => {
+    await configure({ commentsEnabled: true, commentPrompt: "Be friendly." });
+    await add("rescore-1-10-100-1");
+    labelJob({}, [{ name: LABELS[4] }]);
+    route(`${issuePath}/labels?per_page=100&page=1`, [{ name: LABELS[4] }]);
+    route(
+      `${issuePath}/labels/${encodeURIComponent(LABELS[4])}`,
+      null,
+      "DELETE",
+      204,
+    );
+    route(
+      `${issuePath}/comments?per_page=100&page=1`,
+      own(composeComment("No score yet, sorry.", template(null))),
+    );
+    route(`/repos/${repo}/issues/comments/77`, {}, "PATCH", 200, {
+      body: composeComment("", template(82.7)),
+    });
+    await runJob(llmEnv, "rescore-1-10-100-1");
+    expect((await job("rescore-1-10-100-1"))?.result).toBe(LABELS[2]);
+    expect(llmCalls()).toHaveLength(0);
+  });
+
+  it("keeps the intro when only the email footer changes", async () => {
+    await configure({ commentsEnabled: true, commentPrompt: "Be friendly." });
+    await add("delivery-1");
+    labelJob();
+    route(
+      `${issuePath}/comments?per_page=100&page=1`,
+      own(composeComment("Earlier intro.", template(82.7))),
+    );
+    route(`/repos/${repo}/issues/comments/77`, {}, "PATCH", 200, {
+      body: composeComment(
+        "Earlier intro.",
+        commentTemplate("AsperforMias", 82.7, slug, true),
+      ),
+    });
+    await runJob({ ...llmEnv, EMAIL_ENABLED: "true" }, "delivery-1");
+    expect((await job("delivery-1"))?.state).toBe("done");
+    expect(llmCalls()).toHaveLength(0);
+  });
+
+  it("follow-ups never create a first comment", async () => {
+    await configure({ commentsEnabled: true, commentPrompt: "Be friendly." });
+    await add("mention-d1");
+    labelJob();
+    route(`${issuePath}/comments?per_page=100&page=1`, []);
+    await runJob(llmEnv, "mention-d1");
+    expect((await job("mention-d1"))?.state).toBe("done");
+    expect(llmCalls()).toHaveLength(0);
+  });
+
+  it("falls back to the template when the LLM fails", async () => {
+    await configure({ commentsEnabled: true, commentPrompt: "Be friendly." });
+    await add("delivery-1");
+    labelJob();
+    llm = () => reply("   ");
+    route(`${issuePath}/comments?per_page=100&page=1`, []);
+    route(`${issuePath}/comments`, { id: 1 }, "POST", 201, {
+      body: composeComment("", template(82.7)),
+    });
+    await runJob(llmEnv, "delivery-1");
+    expect((await job("delivery-1"))?.state).toBe("done");
+    expect(llmCalls()).toHaveLength(1);
+  });
+
+  it("posts the template without an LLM call when the prompt is empty", async () => {
+    await configure({ commentsEnabled: true });
+    await add("delivery-1");
+    labelJob();
+    route(`${issuePath}/comments?per_page=100&page=1`, []);
+    route(`${issuePath}/comments`, { id: 1 }, "POST", 201, {
+      body: composeComment("", template(82.7)),
+    });
+    await runJob(llmEnv, "delivery-1");
+    expect(llmCalls()).toHaveLength(0);
+  });
+
+  it("never comments from install backfill", async () => {
+    await configure({ commentsEnabled: true, commentPrompt: "Be friendly." });
+    for (const id of ["open-10-100-1", "open-pr-10-100-1"]) {
+      await add(id);
+      labelJob(id === "open-pr-10-100-1" ? { pull_request: {} } : {});
+      await runJob(llmEnv, id);
+      expect((await job(id))?.state).toBe("done");
+    }
+    expect(commentCalls()).toHaveLength(0);
+    expect(llmCalls()).toHaveLength(0);
+  });
+
+  it("omits the mention hint in a no-score comment on a pull request", async () => {
+    await configure({ commentsEnabled: true });
+    await add("delivery-1");
+    const missing = {
+      ...testEnv,
+      SCORE: { fetch: async () => new Response("{}", { status: 404 }) },
+    } as unknown as Env;
+    route("/app/installations/10/access_tokens", { token: "t" }, "POST", 201);
+    route("/repositories/100", { id: 100, full_name: repo, archived: false });
+    route(`/repos/${repo}/labels?per_page=100&page=1`, repoLabels);
+    route(issuePath, {
+      state: "open",
+      pull_request: {},
+      user: { login: "AsperforMias", id: 5 },
+    });
+    route(`${issuePath}/labels?per_page=100&page=1`, []);
+    route(`${issuePath}/labels`, {}, "POST", 200, { labels: [LABELS[4]] });
+    route(`${issuePath}/comments?per_page=100&page=1`, []);
+    const pr = commentTemplate("AsperforMias", null, slug, false, true);
+    route(`${issuePath}/comments`, { id: 1 }, "POST", 201, {
+      body: composeComment("", pr),
+    });
+    await runJob(missing, "delivery-1");
+    expect((await job("delivery-1"))?.result).toBe(LABELS[4]);
+    expect(pr).toContain("No score does not mean zero.");
+    expect(pr).not.toContain(`@${slug}`);
+    expect(template(null)).toContain(`\`@${slug}\``);
+  });
+
   it("neutralizes GH- references, email addresses and commit SHAs", () => {
     const out = sanitizeIntro(
       "See GH-123 and gh-7, mail dev.ops+x@example.co.uk, fixed in a1b2c3d and 0123456789abcdef0123456789abcdef01234567; GH-x stays, cafe and 123456 too.",

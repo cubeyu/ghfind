@@ -494,6 +494,51 @@ async function processJob(env: Env, job: Job) {
       current,
       deadline,
     );
+  // A bot comment makes GitHub notify the thread. Admin backfill (open-,
+  // open-pr-) never comments; follow-ups only update an existing comment.
+  if (settings.commentsEnabled && !job.id.startsWith("open-")) {
+    const score: unknown = JSON.parse(job.score);
+    const userId = Number(user.id);
+    const login = user.login;
+    await syncComment(
+      api,
+      fullName,
+      issueNumber,
+      env.APP_SLUG,
+      commentTemplate(
+        login,
+        score,
+        env.APP_SLUG,
+        env.EMAIL_ENABLED === "true",
+        Boolean(pr.pull_request),
+      ),
+      followUp
+        ? undefined
+        : async () => {
+            if (
+              Number.isInteger(userId) &&
+              userId > 0 &&
+              !(await reserveIssueComment(
+                env,
+                job.installation,
+                positive(job.repository),
+                userId,
+                label === LABELS[4],
+              ))
+            )
+              return null;
+            return llmConfigured(env)
+              ? introFor(
+                  env,
+                  settings.commentPrompt,
+                  login,
+                  score,
+                  deadline,
+                )
+              : "";
+          },
+    );
+  }
   // Backfill uses open- / open-pr- / rescore-*-openpr- ids and does not email.
   // A newly opened pull request uses the same 72-hour quiet period as issues.
   if (env.EMAIL_ENABLED === "true" && !suppressesScoreEmail(job.id))
