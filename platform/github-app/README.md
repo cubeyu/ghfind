@@ -32,9 +32,10 @@ you a practical first screening step for potentially low-quality incoming work.
 
 The thresholds are currently fixed at **40, 70 and 90**; per-repository threshold
 configuration is not available. You choose how to handle each band using GitHub
-filters and your team's process. The App labels issues and pull requests. It
-does not post conversation comments, or block and close submissions. The score
-measures the author's public profile, not
+filters and your team's process. By default the App only labels issues and pull
+requests. It posts conversation comments or intent labels only when a repository
+admin turns them on in [repository settings](#repository-settings), and it never
+blocks or closes submissions. The score measures the author's public profile, not
 the submission's quality, and a new contributor may have a limited public record.
 
 Missing labels are initialized automatically. All actions use the independent
@@ -52,17 +53,16 @@ repositories it may access.
 1. Follow the installation link and select repositories. Grant **Issues: read and write**, **Pull requests:
    read and write** and the implicit **Metadata: read** permission.
 2. The App automatically creates missing `review: low`, `medium`, `high`,
-   `top`, and `no-score` labels, then reads the first two pages of the open
-   issue list (100 items per page) and the first page of open pull requests
-   (100 items). Pull requests mixed into the issue list are skipped so they are
-   not queued twice. That existing-PR page is labeled without sending score email.
+   `top`, and `no-score` labels. Existing issues and pull requests are not
+   queued; a repository admin can [backfill](#repository-settings) them later.
    Owner-customized colors and descriptions are preserved;
    original bot-owned grey defaults are upgraded to the palette below.
    Archived labels and case conflicts are reported for the owner to fix.
    Issues already labeled `review-level:` keep that older, longer name.
 3. The installation setup page offers GitHub sign-in to view accessible
    repository jobs. Retrying a failed repository job requires repository admin
-   permission. Sign-in is optional for automatic labeling.
+   permission. Sign-in is optional for automatic labeling. The same sign-in
+   opens [repository settings](#repository-settings) at <https://bot.ghfind.com/admin>.
 4. Open a new issue or pull request. An empty description is fine. Processing is asynchronous;
    wait for the queue, then refresh. The `review:` label is added by
    `ghfind-review[bot]`.
@@ -84,7 +84,7 @@ New installations request both automatically.
 
 | Symptom                            | What to check                                                                                                                                                                                             |
 | ---------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| No label                       | Confirm the App is installed on this repository and required permissions were accepted. Install queues only the first two pages of the open issue list. Open the installation's setup page and sign in to inspect job status. |
+| No label                       | Confirm the App is installed on this repository and required permissions were accepted, and that issues or pull requests are switched on in repository settings. Existing items are labeled only after an admin runs **Backfill existing items** in repository settings. Open the installation's setup page and sign in to inspect job status. |
 | Initialization fails               | Check for archived labels or conflicting capitalization; fix them in the repository's Labels page, then use **Retry (admin)** on the setup page.                                                          |
 | `review: no-score`                 | The score is missing, invalid, or could not be retrieved within the retry budget. It is not zero. A missing GitHub account stays no-score. A timeout or cloud error is retried 20 and 60 minutes later; a recovered score replaces the label. After 60 minutes, only the author or a repository admin can comment `@ghfind-review` on that issue to rescore it and update the label. |
 | Want to stop processing            | Remove the repository from the App installation, suspend it, or uninstall it. Existing labels remain.                                                                                         |
@@ -99,17 +99,220 @@ permission to merge. New issues and pull requests are labeled from
 `issues.opened` and `pull_request.opened`.
 The author or a repository admin can comment `@ghfind-review` on an open
 no-score issue to request one fresh score; the label is updated.
-Installing the App, or adding a repository, reads the first two pages of the
-open issue list and the first page of open pull requests. The existing-PR page
-does not send email. A later new pull request can.
+Installing the App, or adding a repository, only sets up labels. Existing open
+items are queued when a repository admin runs a backfill from repository
+settings. Backfilled issues and pull requests do not send email. A later new
+issue or pull request can.
 Closed items are left untouched. Editing or reopening an existing issue does
 not score it again.
+
+## Repository settings
+
+Sign in with GitHub at <https://bot.ghfind.com/admin> (also linked from the home
+page and the setup page). The page lists the App installations you can access,
+then the repositories in an installation that your GitHub account can reach.
+Settings are keyed by the GitHub repository ID, which is globally unique, so
+they survive same-owner renames and uninstalling/reinstalling the App (the row
+also records the last installation that saved it). A transfer to a new owner
+resets AI opt-ins, selected intent labels and custom comment prompts; the new
+owner must opt in again. Reads require repository write or admin access.
+
+- **Who can see and change them.** Signed-in users with repository **write** or **admin**
+  access through the installation can view its settings. Saving requires
+  repository **admin** permission, checked live with your GitHub token on every
+  save (the same rule as Retry); everyone else gets a read-only form. Saves are
+  same-origin form posts with a CSRF token. An installation or repository ID in
+  the URL never grants access by itself.
+- **Issues / pull requests.** Two switches, both on by default, control whether
+  new issues and new pull requests are scored and labeled. They are checked when
+  a job runs, so turning one off also stops jobs already queued.
+- **Backfill existing items.** Install, adding a repository, unsuspending and
+  accepting new permissions only set up labels. A separate form on the
+  repository page queues the newest 1–100 open items (default 25) in one GitHub
+  request, newest first, obeying the issue and pull request switches. It has the
+  same admin, origin and CSRF checks as saving, remembers the chosen number, and
+  is refused while a backfill for that repository is pending or running. The
+  page shows the last backfill's state, time and result. Every run processes its
+  items again, even ones handled before, so running it after turning on intent
+  labels reaches existing items. Backfilled items
+  never send a score email or get a comment.
+- **Intent labels (off by default).** The admin ticks which of the repository's
+  existing labels the bot may use; `review:` labels are excluded. For each new
+  issue or pull request, the title and the first 8,000 characters of
+  the description (passed to the model as untrusted data) and the ticked labels with
+  their GitHub descriptions go to the LLM, which picks at most three. The bot only
+  adds labels that are ticked and still exist; it never creates, renames or
+  removes labels, and it skips an item that already carries a ticked label.
+  Rescore and mention jobs do not triage again.
+- **Comments (off by default).** When on, the bot posts one score comment for
+  each author in the repository (no-score comments are also capped at three per
+  repository). An optional prompt sets the language and tone: the LLM sees only
+  that prompt and the score facts, never the issue text, and writes a short
+  plain-text greeting above the fixed score table. Links, mentions, markdown and
+  HTML are stripped from the greeting; the table is not changed. Without a prompt,
+  or if the LLM fails, the plain table is posted. Backfill never comments,
+  and rescores only update an existing comment.
+
+Intent classification uses `TRIAGE_PROVIDER=llm` by default and the optional
+`LLM_API_KEY`. Set `TRIAGE_PROVIDER=jev` with `OPENROUTER_API_KEY` to use Jev's
+OpenRouter Decisions API instead. AI greetings independently use `LLM_API_KEY`;
+unavailable greetings fall back to the plain score table. Missing classifier
+credentials disable intent labeling. Issue and pull request text is never stored;
+opting in sends it to the configured classification provider.
+
+## Desktop console
+
+After GitHub sign-in, `/admin` opens the global Dashboard. Its flat metric strip,
+account health table, Issue/PR processing table and activity history use current
+authenticated memberships and live repository write permission. `/admin?installation_id=…`
+opens an account dashboard; repository, task, activity and installation pages
+remain separate sidebar destinations. Dashboard navigation clears account filters,
+while the other destinations keep the selected account.
+
+Global reads check at most four accounts and 25 repositories per account on each
+page, with one bounded repository listing per account. Account and repository
+pagination and coverage text identify incomplete scope. Counters cover jobs
+updated in the last 30 days within that scope; tables show retained history.
+Scoped task and activity pages have independent filters and pagination. Activity
+is repository-scoped history: older records have no installation or owner
+provenance and must not be interpreted as an installation audit trail.
+
+Installation management keeps the selected workspace. The account menu offers
+All accounts and native account links, supports keyboard navigation, and resets
+repository-specific filters on account changes. Repository forms preserve list
+filters, page and language, warn before discarding unsaved settings, and prevent
+duplicate submissions with pending feedback. Statuses use plain text and marks;
+settings use ruled sections instead of stacked cards.
+
+Issue and PR jobs share each repository's GitHub number order, ascending, applied
+before SQL pagination. Repositories group by current canonical name; immutable
+admission time and binary job ID break ties, and unnumbered operations follow
+numbered items. Changing parallel-consumer completion timestamps does not reorder
+the task list or legacy setup list (issue #370). Chronological activity and the
+API's recent-job summary retain their own purposes.
+
+Repository settings have separate settings, preview, backfill, cleanup and
+activity tabs. Processing switches require current admin permission and affect
+future events. Historical scans remain explicit. Intent preview sends a sample
+title/body to the same classifier using saved, current allowed labels; it never
+changes GitHub or saves the sample. It is limited to one request per repository
+per minute, including failed provider calls.
+
+For a local desktop preview, run
+`pnpm exec tsx platform/github-app/scripts/dev-dashboard.mts --installations=2`
+from the repository root and open `http://127.0.0.1:4201/admin`. This runs the
+actual Worker with all migrations in isolated ephemeral D1 and synthetic GitHub
+identity, repositories and history. GitHub writes and background consumers are
+disabled; classification is disabled by default. Add `--jev` only to explicitly
+enable real model calls with the private local credential file. The preview is
+not production acceptance or a replacement for GitHub OAuth testing.
+
+Use `--installations=0`, `=1` (default), or `=2` to check empty, single-account,
+and multiple-account states. While the preview runs without `--jev`, run
+`pnpm exec tsx platform/github-app/scripts/dashboard-ux-acceptance.mts`
+to exercise global/account navigation, native account switching, forms, browser
+Back, numeric task order, and light/dark/auto themes in English, Chinese and Arabic
+at desktop/mobile sizes. The script submits a disabled-provider preview to check
+its error state; it makes no real model calls. Run fixture modes sequentially on
+port 4201.
+
+The bot records every intent label it adds (repository, issue number and label
+name) in `triage_labels`, so a cleanup can remove exactly those and never a label
+a person applied. Setting changes, pauses, backfills, retries and cleanups are
+written to `audit_log` with the admin's login and whether they came from the web
+or the API.
+
+## Clean up
+
+The repository page has a **Clean up** card. It removes only what the bot wrote:
+
+- bot-applied `review:` labels on issues and pull requests (candidates found with one label search per band);
+- intent-label candidates recorded after acknowledged writes in `triage_labels`;
+- the bot's own score comments: author is `<slug>[bot]` and the body starts with
+  the comment marker. The newest 5,000 repository comments are scanned; run
+  again for older ones.
+- optionally unused `review:` label definitions, checked across open and closed
+  issues and PRs immediately before deletion. Combined cleanup removes proven
+  bot assignments first; any remaining assignment preserves the definition.
+  Intent label definitions belong to the repository and are never deleted.
+
+Before removing an issue or PR label, execution checks its latest exact-name
+label event across at most five event pages. Only a `labeled` event attributed
+to this bot permits removal; human reapplications, unknown actors, failed reads
+and histories exceeding the cap are preserved. Label presence and the local
+ledger alone never authorize removal.
+
+A cleanup is a preview first: a queue job counts candidate items (at most 5,000; the
+preview says when it was truncated) and writes nothing to GitHub. The admin then
+confirms within 10 minutes. In the web admin only the admin who started the
+preview can confirm it; the API needs the one-time confirm token. Execution runs
+in queue steps of 40 GitHub calls, parks on the App quota like other jobs, can be
+cancelled between items, and counts already gone or preserved items as skipped.
+The execution count may be lower than the preview. A replay is harmless. One cleanup per repository can be active. If score labels
+are still on, the preview warns that new items will be labeled again; pause first.
+
+## CLI and API for agents
+
+Repository admins (and their agents) can do everything above from a terminal
+with the ghfind CLI, using a personal API token from
+<https://ghfind.com/integrations> in `GHFIND_API_KEY`. When creating the token,
+explicitly select **Manage the ghfind Review bot**. Existing tokens remain
+scan-only; `token_scope_required` means you must create a new token with this
+permission. The permission is required for all bot commands, including reads,
+and repository permissions are still checked on every request:
+
+```sh
+ghfind bot status owner/repo                    # settings, failed jobs, last cleanup, audit log
+ghfind bot pause owner/repo                     # issues and PRs off, queued jobs cancelled
+ghfind bot cleanup owner/repo --labels all --comments   # preview only; prints a confirm token
+ghfind bot cleanup confirm owner/repo <token> --wait    # execute that preview
+ghfind bot resume owner/repo
+ghfind bot settings set owner/repo --triage off
+ghfind bot backfill owner/repo -n 25
+ghfind bot retry owner/repo [job-id]
+```
+
+The CLI calls `https://bot.ghfind.com/api/v1/repos/{owner}/{repo}` (`GET` status,
+`GET|PATCH /settings`, `POST /pause|/resume|/backfill|/retry|/cleanups`,
+`GET /cleanups/{id}`, `POST /cleanups/{id}/confirm|/cancel`). The bot sends the
+token to ghfind.com (`GET /api/account/whoami`, through the service binding) to
+learn the GitHub account, then checks that account's current permission on the
+repository with the installation token on every request: reading needs write
+access, every change needs admin. No GitHub user token is stored or needed by the
+CLI. Errors are JSON `{"error": code}`. "Not installed", "no such repository" and
+"no write access" all answer `not_found`, so a token cannot probe private
+repositories. Each GitHub account may make 60 requests a minute and 600 an hour
+(`rate_limited` with `Retry-After`). A read reuses a permission check for one
+minute and a denial is remembered for one minute, so polling and probing cost no
+GitHub quota; every change re-checks live. Retrying a failed job closes it first,
+so it is retried once, and the new job keeps the original kind (a backfilled item
+still sends no email or comment).
+
+Scoped-token rollout: first apply main-site migration
+`migrations/0015_ghfind_api_tokens.sql` before
+`migrations/0018_ghfind_api_token_scopes.sql` on the main `ghfind` database,
+then deploy the main site (token creation, listing and `/api/account/whoami`),
+then deploy the bot that requires the `bot` scope. Its legacy `SCORE=ghfind`
+service target must expose the new whoami response before declaring bot CLI
+readiness. Production CI waits for that successful matching backend release.
+Manual deployments must preserve this order; an old backend rejects bot calls
+until scopes are available, and these calls fail closed. The main-site workflows
+apply only explicitly approved migrations before Worker deployment: include
+these migrations and their SHA-256 values in `ops/feed-application-schema-release.json`
+(dev and application production) and `ops/feed-production-schema-release.json`
+(full production). The bot's
+separate database migrations do not apply this main-site migration.
+Existing tokens keep `scan` only. During a rolling deployment, a missing scopes
+column is read as `scan` only and bot-enabled creation is refused until the
+migration is applied; a whoami response without `bot` is rejected by the bot.
 
 ## Runtime
 
 - Separate Worker, Queues and D1; no writes to scoring/Feed databases.
 - Webhook HMAC validates the raw body before admission. Only minimal task
-  metadata is retained; issue text is not stored or executed.
+  metadata and repository settings are retained; issue text is not stored or
+  executed. With intent labels on, the title and description are sent to the
+  configured LLM provider and discarded.
 - D1 is the durable outbox. Queue sends are recovered by a one-minute cron.
   Delivery IDs deduplicate redelivery. The queue runs 96 consumers, 24 for
   each of the four GitHub tokens. That is the backend worker pool: one Worker
@@ -134,7 +337,11 @@ not score it again.
   access revocation. Suspended/deleted installations cannot mint usable tokens.
 - D1 sessions contain encrypted user tokens; Secure/HttpOnly/SameSite cookies,
   one-use OAuth state, origin/CSRF checks, and live repository-admin checks guard
-  retries. A supplied installation ID is never treated as proof of access.
+  retries and settings saves. A supplied installation ID is never treated as
+  proof of access.
+- LLM calls (`src/llm.ts`) use an OpenAI-compatible `/chat/completions` endpoint,
+  are capped at sixty seconds within the job budget, and never block labeling:
+  a failure leaves the score label in place and posts the plain comment.
 - Score reads use the `SCORE` service binding to the existing `ghfind` Worker.
 
 The labeling contract was ported from #288; the CLI implementation is not
@@ -192,7 +399,8 @@ Adding it does not add a permission.
 Existing installations must accept the added Issues
 permission in their GitHub installation settings. GitHub
 also delivers installation lifecycle events automatically. Keep optional OAuth
-on installation disabled: it is only needed to view the setup dashboard.
+on installation disabled: it is only needed to view the setup dashboard and
+repository settings.
 
 ## Deploy
 
@@ -200,8 +408,10 @@ The production account is pinned to `8f19bebe359e4ec1a24c68c5f49c1584` (the same
 account as ghfind). App ownership in GitHub does not change Cloudflare billing.
 Before deploy, verify `wrangler whoami`, `wrangler d1 list`, and
 `wrangler queues list`. Never substitute another Cloudflare account to get a
-deploy through. The default configuration is for local/staging development;
-staging's placeholder D1 ID must be provisioned before a remote staging deploy.
+deploy through. The default configuration is local/staging development. Staging
+is provisioned as Worker `ghfind-bot-staging`, D1 `ghfind-bot-staging` and queues
+`ghfind-bot-staging`/`-dead`; it uses throwaway App credentials and cannot write
+to GitHub.
 
 Set non-secret `APP_ID`, `APP_CLIENT_ID`, `APP_SLUG` in the production vars.
 Secrets are `APP_PRIVATE_KEY`, `WEBHOOK_SECRET`, `APP_CLIENT_SECRET`, and a random
@@ -212,10 +422,69 @@ pnpm exec wrangler d1 migrations apply ghfind-bot --remote --env production
 pnpm exec wrangler deploy --env production --secrets-file /absolute/private/worker-secrets.json
 ```
 
-Pushing `platform/github-app` to `main` runs GitHub App checks, then CI deploys
-`ghfind-bot` with `wrangler deploy --env production`. Existing Worker secrets
-stay in place. The score service deploys with the main site workflow after CI
-succeeds.
+Apply every pending migration before the code that needs it is deployed. In
+particular, `0006_repo_settings.sql` must be applied before deploying the
+repository-settings release. If the table is missing, settings reads fall back
+to the defaults so webhooks keep working, but saving settings and backfills fail
+until the migration is applied. `0007_bot_operations.sql` (intent label records,
+audit log, cleanups) must be applied before the cleanup/API release: until it is,
+the admin/API controls and intent-label records depend on that schema.
+
+The `ghfind bot` API authenticates through ghfind.com's `/api/account/whoami`.
+Deploy the legacy `ghfind` main site with the scoped route before this Worker;
+until then the API answers `auth_unavailable`.
+
+`LLM_API_KEY` is an optional secret and is deliberately not in
+`secrets.required`. Without it, AI greetings are off; intent classification is
+also off under the default `llm` provider. Jev uses its separate OpenRouter
+secret. The settings page reports these capabilities separately. For greetings
+and the default classifier:
+
+```sh
+pnpm exec wrangler secret put LLM_API_KEY --env production
+```
+
+`LLM_BASE_URL` (default `https://api.stepfun.com/v1`) and `LLM_MODEL` (default
+`step-3.7-flash`) are optional vars in `wrangler.jsonc`; leave them empty for
+the defaults or point them at another OpenAI-compatible provider.
+
+For Jev intent classification, set `TRIAGE_PROVIDER=jev`, install the optional
+`OPENROUTER_API_KEY` secret, and retain `JEV_MODEL=typesafe/jev-1.13`.
+`JEV_THRESHOLD=0.8` is a conservative initial setting, not a calibrated accuracy
+claim. Each saved existing label is evaluated against its GitHub description;
+at most three qualifying labels are added. Invalid or unavailable decisions
+produce no labels and do not fall back to a generative model.
+
+Run the reproducible live evaluation from the repository root:
+
+```sh
+pnpm exec tsx platform/github-app/scripts/jev-live.mts
+```
+
+The script reads `OPENROUTER_API_KEY` from the private local file documented in
+the script, never from command arguments. Use a non-production credential;
+outputs contain fixtures and sanitized statuses, not credentials. The generic
+question evaluates each description against at least one actual problem,
+request, question or explicitly stated change; secondary PR changes can qualify.
+It does not substitute label-name guesses for a supplied description.
+
+Use `JEV_EVAL_SUITE=semantic-groups` for two repository-local simulated groups,
+including conflicting descriptions for identical label names. To capture public
+Dify examples locally, run
+`pnpm exec tsx platform/github-app/scripts/jev-dify-snapshot.mts`; it only
+performs GitHub GET requests. Then run `jev-live.mts` with
+`JEV_EVAL_SUITE=dify-snapshot` and `JEV_EVAL_FIXTURES=<local-json>`. No Dify configuration or
+label is written. The strict final eight-case Dify evaluation passed 7/8: a broad
+Agent description also matched a workflow-memory PR at the inclusive 0.8
+threshold. This small sample does not establish calibrated production accuracy;
+Jev remains opt-in, and the default provider remains `llm`.
+
+PRs and pushes run GitHub App checks. Production bot deployment is the final
+`deploy-bot` job of **Deploy production (Cloudflare)**, after the successful
+legacy `ghfind`/SCORE deployment and smoke checks for the same CI SHA. It checks
+that SHA is still current main, serializes production deployments, applies bot
+migrations, then deploys the matching Worker. Existing Worker secrets stay in
+place. A failed or stale main-site release cannot deploy the bot.
 
 For later rotations use `wrangler secret bulk` with a private file. Never put
 secret values in command arguments, GitHub comments, screenshots or logs.
@@ -229,8 +498,9 @@ of repository owner logins.
 
 ## Observe and recover
 
-The setup page shows the latest 100 installation jobs intersected with the
-user's accessible repositories. Only repository admins can submit Retry. For a
+The setup page shows up to 100 authorized installation jobs in repository and
+shared GitHub-number order, with membership and historical owner filtering before
+the limit and live write permission checked before display. Only repository admins can submit Retry. For a
 failed discovery job, a maintainer can redeliver the installation webhook from
 GitHub App settings; use the SQL/operator procedure below for a fresh budget.
 Replaying a completed delivery is intentionally a no-op.
@@ -315,7 +585,7 @@ URL, and—when available—their percentile and score rank among accounts index
 ghfind. These are **site score statistics**, not a processing order or a prediction
 of when maintainers will respond. Missing statistics are omitted. A newly opened
 pull request uses the same per-person, cross-repository 72-hour quiet period.
-The one-time page of existing pull requests is labeled without sending mail.
+Existing issues and pull requests queued by an admin backfill are labeled without sending mail.
 
 Delivery uses an independent D1 outbox. One person receives at most one score email
 every 72 hours, across repositories. Extra messages created during that quiet period
