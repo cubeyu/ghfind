@@ -1401,7 +1401,7 @@
   },
   "githubBot": {
     "metaTitle": "ghfind Review | Bot de GitHub para clasificar Issues y PRs",
-    "metaDescription": "Gestiona las etiquetas de puntuación del autor, la clasificación opcional del contenido, las vistas previas, el procesamiento de envíos existentes y la limpieza desde la consola del Bot ghfind Review o la CLI.",
+    "metaDescription": "ghfind Review combina etiquetas de puntuación y clasificación de contenido con vistas previas, limpieza y tu propio servicio de IA (BYOK), por repositorio.",
     "topline": {
       "section": "Integraciones",
       "current": "GitHub Bot"
@@ -1451,8 +1451,33 @@
         "mode": "Opcional · Desactivada por defecto",
         "title": "Clasificación del contenido",
         "body": "Compara el título y el cuerpo del Issue o PR con las descripciones de las etiquetas existentes que selecciones. Al activarse, el clasificador puede añadir hasta tres etiquetas coincidentes sin crear ni renombrar ninguna.",
-        "example": "Requiere un servicio de clasificación configurado. Prueba una sugerencia en la consola antes de activarla. La clasificación por IA es independiente de la puntuación del autor y puede necesitar correcciones."
+        "example": "Requiere un servicio de clasificación configurado. Prueba una sugerencia en la consola antes de activarla. La clasificación por IA es independiente de la puntuación del autor y puede necesitar correcciones. Conecta tu propio servicio de IA en los ajustes del repositorio."
       }
+    },
+    "byok": {
+      "heading": "Usa tu propio servicio de IA",
+      "lead": "Usa tu URL de API, clave y modelo. Configura cada repositorio y elige tu servicio o el de la plataforma.",
+      "cta": "Configurar tu servicio de IA",
+      "setup": "Abre un repositorio y entra en Servicio de IA. Guardar requiere permisos de administrador del repositorio.",
+      "items": {
+        "provider": {
+          "title": "Elige el servicio por repositorio",
+          "body": "Alterna entre el servicio de la plataforma y tu propia URL base de API HTTPS pública. Cada repositorio conserva su configuración."
+        },
+        "protocol": {
+          "title": "Elige protocolo y modelo",
+          "body": "Chat Completions compatible con OpenAI permite clasificar contenido y generar saludos. Jev Decisions solo clasifica contenido."
+        },
+        "key": {
+          "title": "Protege tu clave",
+          "body": "Las claves de API se almacenan cifradas y nunca vuelven a mostrarse. Puedes sustituir o eliminar una clave guardada desde la consola."
+        },
+        "test": {
+          "title": "Prueba antes de activar",
+          "body": "Prueba explícitamente la conexión guardada. La prueba no modifica GitHub ni guarda textos de ejemplo. La clasificación de contenido sigue desactivada por defecto."
+        }
+      },
+      "billing": "Tu proveedor factura las solicitudes a tu clave. Si tu servicio falla, el Bot no cambia al servicio de la plataforma sin avisar."
     },
     "operations": {
       "heading": "Primero revisa. Después decide.",
