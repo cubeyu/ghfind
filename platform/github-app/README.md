@@ -161,6 +161,108 @@ unavailable greetings fall back to the plain score table. Missing classifier
 credentials disable intent labeling. Issue and pull request text is never stored;
 opting in sends it to the configured classification provider.
 
+## Bring your own AI service (BYOK)
+
+The repository's **AI service** tab lets an administrator choose the platform
+service or a separately configured service for that repository. From
+<https://bot.ghfind.com/admin/repositories>, open a repository and select
+**AI service**. Supply a public HTTPS API base URL, API key, model identifier and
+protocol, save the settings, then explicitly run **Test connection**. Saving or
+testing does not enable content classification: intent labels remain off until
+the administrator enables them and selects existing repository labels.
+
+- **OpenAI-compatible Chat Completions (`llm`)** supports both content
+  classification and generated comment greetings. Comments have their own
+  opt-in switch and prompt; the author-score table is not an AI code review.
+- **Jev Decisions (`jev`)** supports content classification only. It does not
+  generate greetings.
+- **Repository isolation.** Configuration and encrypted credentials belong to
+  the repository ID and current owner, with live repository permission checks.
+  Reading needs repository write access; saving, replacing or removing keys,
+  and connection tests require repository admin access. A different repository
+  cannot reuse the saved credentials through its settings. Same-owner renames
+  keep the configuration; transfer to a different owner disables the previous
+  provider configuration and credentials until the new owner configures the
+  service explicitly. A key from the previous owner is never inherited.
+- **Credential handling.** API keys are encrypted at rest and are never echoed
+  back into HTML or API responses. A saved-key indicator is not the key itself.
+  Leave the key input empty to keep a saved key, enter a new key to replace it,
+  or use the explicit remove-key action. Changing the endpoint or protocol
+  requires a fresh key so an existing credential cannot be sent to a different
+  service by changing only its URL. Secrets stay on the server; browser storage and
+  frontend environment variables must not contain them.
+- **Testing and billing.** Test connection is an explicit request using the
+  saved configuration. It stores no Issue/PR sample text and makes no GitHub
+  writes. Your provider bills requests made with your key, including the test.
+  Failure of a repository's own service never silently falls back to the
+  platform service; optional classification or greeting generation must report
+  or handle the failure without using platform AI credentials.
+- **Endpoint boundary.** Supply an HTTPS base URL with a public hostname, not a
+  complete request URL with query parameters or a fragment. IP literals,
+  private/internal hostnames and URL credentials are rejected. Requests do not
+  follow redirects, so a provider cannot redirect the saved credential to
+  another host. Select the protocol explicitly; a model name does not select
+  the protocol for you. Public A/AAAA answers and CNAME chains are checked before
+  each request, with bounded DNS time and response size. Workers fetch performs
+  its own DNS lookup afterward, so this is not DNS address pinning and does not
+  eliminate a rebinding race. Adding private/VPC egress requires a separate
+  endpoint policy.
+
+### Operator setup for BYOK
+
+Apply the additive bot migration `0008_byok.sql` before enabling the repository AI
+service routes. It stores provider configuration and encrypted key ciphertext;
+it does not put plaintext API keys in D1. Configure the Worker secret
+`BYOK_ENCRYPTION_KEY` with **32 random bytes encoded as base64url**. Generate a
+new value once with Node's `crypto.randomBytes(32).toString("base64url")` and
+install it through Wrangler's secret input, outside version control. This is an
+operator encryption secret, separate from a user's provider API key and from
+`LLM_API_KEY` or `OPENROUTER_API_KEY`.
+
+Keep this encryption secret stable across deployments. Replacing it without a
+planned re-encryption process makes previously saved keys unreadable. There is
+no automatic re-encryption command; affected users must provide their keys again.
+Unreadable BYOK keys disable AI without switching to platform credentials. Do not
+add it to public Worker vars, the frontend bundle, example configuration or
+request logs. BYOK needs the encryption secret even when platform AI providers
+are unavailable; platform configuration alone does not enable any repository's
+classification switch.
+
+### BYOK API
+
+Use the existing `Authorization: Bearer ghf_...` authentication with an
+explicit `bot` token scope. Changes and tests recheck current GitHub admin
+permission; reads use the existing one-minute permission cache and require
+repository write access. These routes do not return the provider API key.
+
+| Method | Path | Purpose |
+| --- | --- | --- |
+| `GET` | `/api/v1/repos/{owner}/{repo}/ai-provider` | Read provider metadata. |
+| `PATCH` | `/api/v1/repos/{owner}/{repo}/ai-provider` | Choose platform or BYOK settings; optionally replace the key. |
+| `POST` | `/api/v1/repos/{owner}/{repo}/ai-provider/test` | Explicitly test the saved connection; send JSON `{}`. |
+| `DELETE` | `/api/v1/repos/{owner}/{repo}/ai-provider/key` | Remove the saved BYOK key; send JSON `{}`. |
+
+Send `Content-Type: application/json` with write/test requests. A BYOK update
+contains `mode: "byok"`, `provider: "llm"` or `"jev"`, `base_url`, `model`, and
+an optional `api_key`. A first save or an endpoint/protocol change requires a
+new `api_key`; omitting it or sending an empty string keeps a valid existing
+key only for the same endpoint and protocol. Keys must contain 8–4,096 printable
+ASCII characters without internal spaces; outer spaces are trimmed. For Jev, the model must belong to
+the supported `typesafe/jev-1.13` family. Use `{"mode":"platform"}` to explicitly
+select the operator-managed platform provider. Switching modes does not remove
+a saved BYOK credential; use the separate key removal endpoint to do that.
+Removing the key selects BYOK with no usable credential, rather than silently
+enabling the platform provider.
+
+Provider metadata contains only
+`{mode, provider, base_url, model, has_key, storage_available, ready, updated_at}`.
+`has_key` indicates credential presence for the selected service, not the key itself;
+`storage_available` reports migration/encryption configuration availability.
+`ready` describes locally usable configuration, not a successful upstream
+connection test. `updated_at` is an ISO 8601 timestamp string, or `null`
+for a configuration without a saved update. Keys, ciphertext, upstream response
+bodies and submitted sample text must not be exposed as provider metadata.
+
 ## Desktop console
 
 After GitHub sign-in, `/admin` opens the global Dashboard. Its flat metric strip,
@@ -192,7 +294,7 @@ numbered items. Changing parallel-consumer completion timestamps does not reorde
 the task list or legacy setup list (issue #370). Chronological activity and the
 API's recent-job summary retain their own purposes.
 
-Repository settings have separate settings, preview, backfill, cleanup and
+Repository settings have separate settings, AI service, preview, backfill, cleanup and
 activity tabs. Processing switches require current admin permission and affect
 future events. Historical scans remain explicit. Intent preview sends a sample
 title/body to the same classifier using saved, current allowed labels; it never
