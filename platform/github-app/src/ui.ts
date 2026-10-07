@@ -1,7 +1,41 @@
+import { ADMIN_STYLE } from "./admin-style";
+import { ADMIN_SCRIPT } from "./admin-script";
+import { ADMIN_MESSAGES } from "./admin-i18n";
+import { loadAdminData, parseAdminFilters } from "./admin-data";
+import { loadGlobalAdminData, GLOBAL_ACCOUNT_PAGE_SIZE, type GlobalRepositoryScope } from "./admin-global-data";
+import { JOINED_JOB_ITEM_ORDER_SQL, compareJobsByItem } from "./job-display-order";
+import { adminShell, adminLink, pageHead, installationPage, dashboardPage, globalDashboardPage, repositoriesPage, tasksPage, activityPage, type AdminContext } from "./admin-ui";
+import { runIntentPreview, IntentPreviewError, type IntentPreviewResult } from "./intent-preview";
 import { seal, unseal } from "./secrets";
+import { audit, recentAudit } from "./audit";
+import {
+  cancelCleanup,
+  Cleanup,
+  confirmCleanup,
+  createCleanup,
+  latestCleanup,
+  parseScopeForm,
+} from "./cleanup";
+import { repoLabels } from "./repo-labels";
 import { verifiedEmail } from "./author-email";
-import { github, jsonRequest, record, positive } from "./github";
-import { dispatch, Job, putJob } from "./jobs";
+import { ApiError, github, jsonRequest, record, positive } from "./github";
+import {
+  dispatch,
+  Job,
+  lastBackfill,
+  putBackfill,
+  retryJob,
+  putJob,
+} from "./jobs";
+import {
+  getSettings,
+  llmConfigured,
+  triageConfigured,
+  parseBackfillLimit,
+  parseSettingsForm,
+  putBackfillLimit,
+  putSettings,
+} from "./settings";
 import {
   format,
   LOCALE_COOKIE,
@@ -54,6 +88,7 @@ main.wrap{flex:1;padding-top:48px;padding-bottom:64px}
 .actions{display:flex;flex-wrap:wrap;gap:10px;margin-top:26px}
 .btn{display:inline-flex;align-items:center;gap:8px;padding:10px 16px;border:1px solid var(--border);border-radius:8px;background:var(--card);color:var(--fg);font:inherit;font-size:13px;font-weight:500;cursor:pointer;transition:background .15s,opacity .15s,transform .15s}
 .btn:hover{background:var(--muted-bg)}
+.btn:disabled{cursor:not-allowed;opacity:.55;transform:none}
 .btn.primary{background:var(--primary);border-color:var(--primary);color:var(--primary-fg)}
 .btn.primary:hover{opacity:.86;transform:translateY(-1px)}
 .note{margin-top:14px;font-size:12px;color:var(--muted)}
@@ -93,11 +128,16 @@ section>.sub{margin-top:6px;font-size:13px;color:var(--muted)}
 .check input{margin-top:5px;accent-color:var(--accent)}
 .textlink{color:var(--link);font-weight:500}
 .table{margin-top:20px;overflow:auto}
+/* Theme-coloured scrollbars for inner scroll areas. */
+.table,.labels{scrollbar-color:var(--border) transparent}
 table{width:100%;border-collapse:collapse;font-size:13px}
 th{padding:12px 16px;text-align:start;font-size:11px;font-weight:600;letter-spacing:.3px;text-transform:uppercase;color:var(--muted);background:var(--surface);border-bottom:1px solid var(--border)}
 td{padding:12px 16px;border-bottom:1px solid var(--border);vertical-align:middle}
 tr:last-child td{border-bottom:0}
 td a{color:var(--link)}
+td{overflow-wrap:anywhere}
+.table table{min-width:580px;table-layout:fixed}
+.table th:first-child{width:35%}
 .pill{display:inline-block;padding:2px 9px;border-radius:999px;background:var(--muted-bg);font-size:11px;font-weight:600}
 .pill[data-state=done]{background:var(--accent-bg);color:var(--accent)}
 .pill[data-state=failed]{background:#fbeaea;color:#a33a3a}
@@ -106,14 +146,48 @@ td a{color:var(--link)}
 .result{display:block;margin-top:4px;font-size:12px;color:var(--muted)}
 .table .btn{padding:6px 12px;font-size:12px}
 .empty{padding:28px;text-align:center;color:var(--muted);font-size:13px}
+fieldset{min-width:0;margin:0;padding:0;border:0}
+legend{padding:0}
+.page h1{overflow-wrap:anywhere}
+.page .card.list{padding:0}
+.rows{margin:0;padding:0;list-style:none}
+.rows li+li{border-top:1px solid var(--border)}
+.rows a{display:flex;justify-content:space-between;gap:12px;padding:14px 20px;color:var(--link);font-weight:500;overflow-wrap:anywhere}
+.rows a:hover{background:var(--surface)}
+.rows a .muted{flex:none;white-space:nowrap}
+.crumbs{display:flex;flex-wrap:wrap;gap:6px 16px;margin-bottom:12px;font-size:12px}
+.notice{padding:12px 14px;border-inline-start:3px solid var(--accent);border-radius:10px;background:var(--surface);font-size:13px;line-height:1.7}
+.stack>*+*{margin-top:22px}
+.stack h2{font-size:15px}
+.stack .check+.check{margin-top:6px}
+.field strong{color:var(--fg);font-size:13px;font-weight:600}
+input[type=number],textarea{font:inherit;font-size:13px;color:var(--fg);background:var(--card);border:1px solid var(--border);border-radius:8px;padding:8px 10px}
+input[type=number]{width:120px}
+textarea{width:100%;min-height:120px;resize:vertical}
+input:disabled,textarea:disabled{cursor:not-allowed;opacity:.6}
+.labels{max-height:480px;margin:10px 0 0;padding:0;list-style:none;overflow:auto;border:1px solid var(--border);border-radius:12px}
+.labels li{padding:10px 14px}
+.labels li+li{border-top:1px solid var(--border)}
+.swatch{flex:none;width:12px;height:12px;margin-top:6px;border:1px solid var(--border);border-radius:999px;background:var(--muted-bg)}
+.grow{min-width:0;overflow-wrap:anywhere}
+.log{margin:0;padding:0;list-style:none}
+.log li{display:grid;gap:3px;padding:11px 0;border-top:1px solid var(--border)}
+.log li:last-child{padding-bottom:0}
+.log .what{min-width:0;font-size:13px;overflow-wrap:anywhere}
+.log .what .muted{font-size:12px}
+.log .who{display:flex;flex-wrap:wrap;align-items:center;gap:4px 8px;font-size:12px;color:var(--muted);overflow-wrap:anywhere}
+.log time{font-variant-numeric:tabular-nums;white-space:nowrap}
 footer{border-top:1px solid var(--border);background:var(--surface)}
 footer .wrap{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:12px;padding-top:22px;padding-bottom:22px;font-size:12px;color:var(--muted)}
 footer nav{display:flex;flex-wrap:wrap;gap:18px}
+.session-signout{border:0;padding:0;background:none;color:inherit;font:inherit;cursor:pointer}
+.session-signout:hover{color:var(--fg)}
 footer a:hover{color:var(--fg)}
 :focus-visible{outline:2px solid var(--link);outline-offset:3px;border-radius:6px}
 .sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
 @media(max-width:860px){.hero{grid-template-columns:1fr;gap:32px}.grid{grid-template-columns:1fr}}
 @media(max-width:640px){.wrap{padding:0 16px}main.wrap{padding-top:28px}.navlink{display:none}.tools select{max-width:104px}.top .wrap{gap:10px}.hero h1{font-size:30px;letter-spacing:-1px}.page .card{padding:20px}th,td{padding:10px 12px}}
+@media(max-width:360px){.top .wrap{flex-wrap:wrap;padding-top:10px;padding-bottom:10px}.tools{width:100%;justify-content:space-between}}
 @media(prefers-reduced-motion:reduce){.btn{transition:none}.btn.primary:hover{transform:none}}
 `;
 
@@ -139,8 +213,17 @@ const LEGEND = [
 const siteUrl = (locale: Locale, path: string) =>
   `https://ghfind.com${locale === "zh" ? "" : `/${locale}`}${path}`;
 
-type View = { locale: Locale; t: Messages; setLocale: boolean };
+type View = { locale: Locale; t: Messages; setLocale: boolean; session?: string; admin?: AdminContext };
 
+// Public scripts are cached, while HTML is not. Derive cache revisions from
+// their contents so a rebuilt UI never silently reuses the previous behavior.
+function scriptRevision(source: string) {
+  let value = 2166136261;
+  for (let index = 0; index < source.length; index++)
+    value = Math.imul(value ^ source.charCodeAt(index), 16777619);
+  return (value >>> 0).toString(36);
+}
+const adminScriptUrl = `/admin.js?v=${scriptRevision(ADMIN_SCRIPT)}`;
 function html(view: View, title: string, content: string) {
   const { locale, t } = view;
   const theme = (["light", "dark", "auto"] as const)
@@ -168,11 +251,11 @@ function html(view: View, title: string, content: string) {
     headers["Set-Cookie"] =
       `${LOCALE_COOKIE}=${locale}; Path=/; Secure; SameSite=Lax; Max-Age=31536000`;
   return new Response(
-    `<!doctype html><html lang="${locale}" dir="${locale === "ar" ? "rtl" : "ltr"}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${escape(title)} · ghfind Review</title><link rel="icon" href="/avatar.png"><style>${STYLE}</style><script src="/theme.js"></script></head><body>
+    `<!doctype html><html lang="${locale}" dir="${locale === "ar" ? "rtl" : "ltr"}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${escape(title)} · ghfind Review</title><link rel="icon" href="/avatar.png"><style>${STYLE}${view.admin ? ADMIN_STYLE : ""}</style><script src="${themeScriptUrl}"></script>${view.admin ? `<script src="${adminScriptUrl}" defer></script>` : ""}</head><body>${view.admin ? adminShell(view.admin,t,content,`<label><span class="sr">${escape(t.nav.language)}</span><select id="lang">${languages}</select></label><div class="theme" role="group" aria-label="${escape(t.nav.theme)}">${theme}</div>`,view.session) : `
 <header class="top"><div class="wrap"><a class="brand" href="/"><img src="/avatar.png" width="28" height="28" alt="">ghfind Review</a><div class="tools"><a class="navlink" href="${siteUrl(locale, "/github-bot")}">${escape(t.nav.site)}${ICONS.external}</a><label><span class="sr">${escape(t.nav.language)}</span><select id="lang">${languages}</select></label><div class="theme" role="group" aria-label="${escape(t.nav.theme)}">${theme}</div></div></div></header>
 <main class="wrap">${content}</main>
-<footer><div class="wrap"><span>© ghfind</span><nav><a href="${siteUrl(locale, "/")}">ghfind.com</a><a href="/notifications">${escape(t.footer.emails)}</a><a href="/privacy">${escape(t.footer.privacy)}</a><a href="https://github.com/hikariming/ghfind">${escape(t.footer.source)}</a></nav></div></footer>
-</body></html>`,
+<footer><div class="wrap"><span>© ghfind</span><nav><a href="${siteUrl(locale, "/")}">ghfind.com</a><a href="/notifications">${escape(t.footer.emails)}</a><a href="/privacy">${escape(t.footer.privacy)}</a><a href="https://github.com/hikariming/ghfind">${escape(t.footer.source)}</a>${view.session ? `<form method="post" action="/logout"><input type="hidden" name="csrf" value="${view.session}"><button class="session-signout">${escape(t.admin.signOut)}</button></form>` : ""}</nav></div></footer>
+`}</body></html>`,
     { headers },
   );
 }
@@ -190,6 +273,7 @@ const CLIENT_SCRIPT = `(()=>{const d=document.documentElement,K='ghfind-bot-them
 const apply=m=>{if(m==='light'||m==='dark')d.dataset.theme=m;else delete d.dataset.theme;document.querySelectorAll('[data-theme-choice]').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.themeChoice===m)))};
 apply(v);addEventListener('DOMContentLoaded',()=>{apply(v);document.querySelectorAll('[data-theme-choice]').forEach(b=>b.onclick=()=>{v=b.dataset.themeChoice;try{localStorage.setItem(K,v)}catch{}apply(v)});
 const l=document.getElementById('lang');if(l)l.onchange=()=>{const u=new URL(location.href);u.searchParams.set('lang',l.value);location.href=u.toString()}})})()`;
+const themeScriptUrl = `/theme.js?v=${scriptRevision(CLIENT_SCRIPT)}`;
 
 function home(view: View, env: Env) {
   const { t, locale } = view;
@@ -245,6 +329,87 @@ function redirect(url: string, cookies?: string) {
     },
   });
 }
+const withStatus = (response: Response, status: number) =>
+  new Response(response.body, { status, headers: response.headers });
+type Api = ReturnType<typeof github>;
+// The user-token endpoint intersects App installation scope with the user's
+// current access. The query parameter alone never grants access.
+async function accessibleRepos(api: Api, installation: string) {
+  const repos = new Map<number, string>();
+  for (let page = 1; page <= 100; page++) {
+    const list = record(
+      await api(
+        `/user/installations/${installation}/repositories?per_page=100&page=${page}`,
+      ),
+    );
+    if (!Array.isArray(list.repositories))
+      throw new Error("Invalid repositories");
+    for (const item of list.repositories) {
+      const repo = record(item);
+      if (typeof repo.id === "number" && typeof repo.full_name === "string")
+        repos.set(repo.id, repo.full_name);
+    }
+    if (list.repositories.length < 100) break;
+  }
+  return repos;
+}
+async function userInstallations(api: Api) {
+  const found: { id: number; account: string }[] = [];
+  for (let page = 1; page <= 10; page++) {
+    const list = record(
+      await api(`/user/installations?per_page=100&page=${page}`),
+    );
+    if (!Array.isArray(list.installations))
+      throw new Error("Invalid installations");
+    for (const item of list.installations) {
+      const x = record(item);
+      const login =
+        x.account && typeof x.account === "object"
+          ? (x.account as Record<string, unknown>).login
+          : undefined;
+      if (typeof x.id === "number" && Number.isSafeInteger(x.id) && x.id > 0)
+        found.push({
+          id: x.id,
+          account: typeof login === "string" ? login : `#${x.id}`,
+        });
+    }
+    if (list.installations.length < 100) break;
+  }
+  return found;
+}
+/** One bounded user-token listing per account, followed by the same live repo
+ * permission checks used by the scoped pages. Never enumerate 100 API pages
+ * just to render a global dashboard request. */
+async function globalRepositoryScope(api: Api, installation: number, repoPage: number): Promise<GlobalRepositoryScope> {
+  const offset = (repoPage - 1) * 25;
+  const upstreamPage = Math.floor(offset / 100) + 1;
+  const list = record(await api(`/user/installations/${installation}/repositories?per_page=100&page=${upstreamPage}`));
+  if (!Array.isArray(list.repositories) || list.repositories.length > 100) throw new Error("Invalid repositories");
+  const fullPage = list.repositories.map(item => {
+    const repo = record(item);
+    if (typeof repo.full_name !== "string") throw new Error("Invalid repository");
+    return [positive(repo.id), repo.full_name] as const;
+  });
+  const countKnown = typeof list.total_count === "number" && Number.isSafeInteger(list.total_count) && list.total_count >= 0;
+  const totalAccessible = countKnown ? list.total_count as number : (upstreamPage - 1) * 100 + fullPage.length;
+  if (countKnown && fullPage.length > 0 && totalAccessible < (upstreamPage - 1) * 100 + fullPage.length) throw new Error("Invalid repository count");
+  const repositories = new Map(fullPage.slice(offset % 100, offset % 100 + 25));
+  return { repositories, totalAccessible, hasNext: repoPage < 400 && (offset + 25 < totalAccessible || !countKnown && fullPage.length === 100), partial: !countKnown && (fullPage.length === 100 || upstreamPage > 1) };
+}
+/** Live check with the user's token, like Retry; never cached. */
+async function repoPermissions(api: Api, fullName: string, repositoryId: number) {
+  const repo = record(await api(`/repos/${fullName}`));
+  // GitHub may redirect a name after a transfer. A stale installation listing
+  // must not authorize the new owner's repository or inherit old preferences.
+  const owner = (name: string) => name.split("/")[0].toLowerCase();
+  if (repo.id !== repositoryId || typeof repo.full_name !== "string" || owner(repo.full_name) !== owner(fullName))
+    return { admin: false, write: false };
+  const permissions = record(repo.permissions);
+  return { admin: permissions.admin === true, write: permissions.admin === true || permissions.push === true };
+}
+async function repoAdmin(api: Api, fullName: string, repositoryId: number) {
+  return (await repoPermissions(api, fullName, repositoryId)).admin;
+}
 async function session(request: Request, env: Env) {
   const id = cookie(request, "ghfind_bot_session");
   if (!id || !/^[a-f0-9-]{36}$/.test(id)) return null;
@@ -260,11 +425,140 @@ async function session(request: Request, env: Env) {
     return null;
   }
 }
+const utc = (ms: number) =>
+  new Date(ms).toISOString().slice(0, 16).replace("T", " ");
+// Danger zone: preview, then confirm. The same backend serves the CLI.
+function cleanupCard(
+  a: Messages["admin"],
+  query: string,
+  csrf: string,
+  admin: boolean,
+  cleanup: Cleanup | null,
+  viewer: string | null,
+) {
+  const active = !!cleanup && (cleanup.state === "planning" || cleanup.state === "running" || (cleanup.state === "planned" && cleanup.expires > Date.now()));
+  const scope = active ? JSON.parse(cleanup!.scope) as { labels?: string; comments?: boolean; definitions?: boolean } : null;
+  const checked = (name: string) => name === "review_labels" ? scope?.labels === "review" || scope?.labels === "all" : name === "triage_labels" ? scope?.labels === "triage" || scope?.labels === "all" : name === "comments" ? scope?.comments : scope?.definitions;
+  const box = (name: string, text: string) =>
+    `<label class="check"><input type="checkbox" name="${name}" value="on"${checked(name) ? " checked" : ""}${active ? " disabled" : ""}><span>${escape(text)}</span></label>`;
+  const action = (path: string, label: string, primary = false) =>
+    cleanup
+      ? `<form method="post" action="/admin/cleanup/${path}?${escape(query)}"><input type="hidden" name="csrf" value="${csrf}"><input type="hidden" name="cleanup" value="${escape(cleanup.id)}"><button class="btn${primary ? " primary" : ""}">${escape(label)}</button></form>`
+      : "";
+  const busy = active;
+  let state = "";
+  if (cleanup) {
+    const name =
+      cleanup.state === "planned" && cleanup.expires <= Date.now()
+        ? "expired"
+        : (cleanup.state as keyof typeof a.cleanStates);
+    const summary = JSON.parse(cleanup.summary) as Record<string, number | boolean>;
+    const detail =
+      name === "planning"
+        ? a.cleanPlanning
+        : name === "planned"
+          ? format(a.cleanPlanned, {
+              review: String(summary.review_labels),
+              triage: String(summary.triage_labels),
+              comments: String(summary.comments),
+              definitions: String(summary.label_definitions),
+              time: utc(cleanup.expires),
+            })
+          : name === "running" || name === "done" || name === "failed" || name === "cancelled"
+            ? format(a.cleanProgress, {
+                done: String(cleanup.done),
+                skipped: String(cleanup.skipped),
+                total: String(cleanup.total),
+              })
+            : name === "expired" ? a.cleanExpired : (cleanup.result ?? "");
+    const notes = [
+      name === "planned" && summary.truncated ? a.cleanTruncated : "",
+      name === "planned" && summary.bot_active ? a.cleanBotActive : "",
+      name === "running" || name === "cancelled" ? a.cleanCancelHint : "",
+      ["planning", "running", "done", "failed", "cancelled"].includes(name) && cleanup.result ? cleanup.result : "",
+    ]
+      .filter(Boolean)
+      .map((x) => `<p class="notice">${escape(x)}</p>`)
+      .join("");
+    const controls = !admin
+      ? ""
+      : name === "planned"
+        ? cleanup.requested_by === viewer
+          ? `<div class="actions" style="margin-top:12px">${action("confirm", a.cleanConfirm, true)}${action("cancel", a.cleanCancel)}</div>`
+          : `<p class="result">${escape(format(a.cleanOwner, { login: cleanup.requested_by }))}</p><div class="actions" style="margin-top:12px">${action("cancel", a.cleanCancel)}</div>`
+        : name === "planning" || name === "running"
+          ? `<div class="actions" style="margin-top:12px"><a class="btn" href="/admin/repo?${escape(query)}&amp;tab=cleanup#cleanup">${escape(a.cleanRefresh)}</a>${action("cancel", a.cleanCancel)}</div>`
+          : "";
+    state = `<p class="result">${escape(a.cleanLast)} <span class="state-text" data-state="${escape(name)}">${escape(a.cleanStates[name] ?? name)}</span> <time datetime="${new Date(cleanup.updated).toISOString()}">${utc(cleanup.updated)} UTC</time></p>${detail ? `<p>${escape(detail)}</p>` : ""}${notes}${controls}`;
+  } else state = `<p class="result">${escape(a.cleanLast)} ${escape(a.cleanNever)}</p>`;
+  return `<div class="operation-main" id="cleanup"><form method="post" action="/admin/cleanup?${escape(query)}"><input type="hidden" name="csrf" value="${csrf}"><fieldset class="stack"${admin ? "" : " disabled"}><div><h2>${escape(a.cleanup)}</h2><p class="result">${escape(a.cleanupHint)}</p>
+<p style="margin-top:10px">${box("review_labels", a.cleanReview)}${box("triage_labels", a.cleanTriage)}${box("comments", a.cleanComments)}${box("delete_label_definitions", a.cleanDefinitions)}</p></div>
+${admin ? `<p><button class="btn"${busy ? " disabled" : ""}>${escape(a.cleanPlan)}</button></p>` : ""}<p class="result">${escape(a.cleanCli)}</p></fieldset></form><div class="stack" style="margin-top:14px">${state}</div></div>`;
+}
+// Recent settings changes and operations (web and API). Only counts and ids are
+// shown from the stored detail, never the raw JSON.
+type AuditEntry = Awaited<ReturnType<typeof recentAudit>>[number];
+function activityDetail(a: Messages["admin"], x: AuditEntry) {
+  const d = (x.detail && typeof x.detail === "object" ? x.detail : {}) as Record<string, unknown>;
+  const count = (v: unknown) =>
+    typeof v === "number" && Number.isFinite(v) ? String(v) : null;
+  switch (x.action) {
+    case "backfill":
+      return count(d.limit) && format(a.activityLimit, { count: count(d.limit)! });
+    case "retry":
+      return count(d.retried) && format(a.activityRetried, { count: count(d.retried)! });
+    case "pause": {
+      const n = count(d.cancelled_jobs ?? d.cancelled);
+      return n && n !== "0" ? format(a.activityCancelled, { count: n }) : null;
+    }
+    case "settings.update":
+      return Array.isArray(d.changed) && d.changed.length
+        ? format(a.activityChanged, {
+            fields:
+              d.changed.slice(0, 6).map((k) => String(k).slice(0, 40)).join(", ") +
+              (d.changed.length > 6 ? ", …" : ""),
+          })
+        : null;
+    default:
+      return x.action.startsWith("cleanup.") && typeof d.id === "string"
+        ? `#${d.id.slice(0, 8)}`
+        : null;
+  }
+}
+function activityCard(a: Messages["admin"], log: AuditEntry[]) {
+  const items = log
+    .map((x) => {
+      const label = a.activityActions[x.action as keyof typeof a.activityActions] ?? x.action;
+      const detail = activityDetail(a, x);
+      const via = a.activityVia[x.via as keyof typeof a.activityVia] ?? x.via;
+      return `<li><span class="what"><strong>${escape(label)}</strong>${detail ? ` <span class="muted">· <bdi>${escape(detail)}</bdi></span>` : ""}</span><span class="who"><time dir="ltr" datetime="${escape(x.at)}">${escape(utc(Date.parse(x.at)))} UTC</time><bdi>${escape(x.actor)}</bdi><span class="state-text">${escape(via)}</span></span></li>`;
+    })
+    .join("");
+  return `<div class="operation-main" id="activity"><div><h2 style="font-size:15px">${escape(a.activity)}</h2><p class="result">${escape(a.activityHint)}</p></div>${items ? `<ul class="log">${items}</ul>` : `<p class="result">${escape(a.activityEmpty)}</p>`}</div>`;
+}
 export async function ui(request: Request, env: Env): Promise<Response> {
+  try {
+    return await renderUi(request, env);
+  } catch (error) {
+    if (!(error instanceof ApiError) || error.status !== 401) throw error;
+    const url = new URL(request.url);
+    const locale = pickLocale(request, url);
+    const t = MESSAGES[locale];
+    const returnTo = url.pathname.startsWith("/notifications") ? "notifications" : "admin";
+    const response = simple(
+      { locale, t, setLocale: false, ...(returnTo === "admin" ? { admin: { path: "/admin", locale, lang: url.searchParams.get("lang") === locale ? locale : undefined } } : {}) },
+      returnTo === "notifications" ? t.notifications.title : t.admin.title,
+      `<p>${escape(returnTo === "notifications" ? t.notifications.body : t.admin.signInBody)}</p><a class="btn primary" href="/login?return_to=${returnTo}">${escape(t.admin.signIn)}</a>`,
+    );
+    response.headers.set("Set-Cookie", cookieHeader("ghfind_bot_session", "", 0));
+    return withStatus(response, 401);
+  }
+}
+async function renderUi(request: Request, env: Env): Promise<Response> {
   const url = new URL(request.url),
     path = url.pathname;
-  if (path === "/theme.js")
-    return new Response(CLIENT_SCRIPT, {
+  if (path === "/theme.js" || path === "/admin.js")
+    return new Response(path === "/theme.js" ? CLIENT_SCRIPT : ADMIN_SCRIPT, {
       headers: {
         "Content-Type": "text/javascript",
         "Cache-Control": "public,max-age=3600",
@@ -314,6 +608,16 @@ export async function ui(request: Request, env: Env): Promise<Response> {
       `<form method="post"><button class="btn primary">${escape(t.unsubscribe.button)}</button></form>`,
     );
   }
+  if (path === "/logout") {
+    if (request.method !== "POST") return new Response("Method not allowed", { status: 405 });
+    if (request.headers.get("origin") !== url.origin) return new Response("Invalid origin", { status: 403 });
+    const current = await session(request, env);
+    if (!current) return redirect("/admin", cookieHeader("ghfind_bot_session", "", 0));
+    const form = new URLSearchParams(await readTextBounded(request));
+    if (form.get("csrf") !== current.id) return new Response("Invalid form", { status: 403 });
+    await env.DB.prepare("DELETE FROM sessions WHERE id=?").bind(`session:${current.id}`).run();
+    return redirect("/admin", cookieHeader("ghfind_bot_session", "", 0));
+  }
   if (path === "/notifications") {
     const n = t.notifications;
     if (env.EMAIL_ENABLED !== "true")
@@ -325,6 +629,7 @@ export async function ui(request: Request, env: Env): Promise<Response> {
         n.title,
         `<p>${escape(n.body)}</p><p class="muted">${escape(n.authNote)}</p><a class="btn primary" href="/login?return_to=notifications">${escape(n.signIn)}</a>`,
       );
+    view.session = current.id;
     const api = github(current.token);
     const user = record(await api("/user"));
     const userId = positive(user.id);
@@ -528,7 +833,7 @@ export async function ui(request: Request, env: Env): Promise<Response> {
   }
   return new Response("Not found", { status: 404 });
 }
-async function readTextBounded(request: Request) {
+async function readTextBounded(request: Request, limit = 4096) {
   const { readText } = await import("./github");
-  return readText(request, AbortSignal.timeout(5000), 4096);
+  return readText(request, AbortSignal.timeout(5000), limit);
 }
