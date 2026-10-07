@@ -4,6 +4,7 @@ import { api as handle } from "../src/api";
 import { runCleanup } from "../src/cleanup";
 import { COMMENT_MARKER, LABELS } from "../src/review";
 import { getSettings } from "../src/settings";
+import { resolveAIEnv } from "../src/byok";
 
 declare const TEST_SQL: string[];
 const testEnv = env as Env;
@@ -15,6 +16,7 @@ const sent: unknown[] = [];
 let whoami: () => Response;
 const e = {
   ...testEnv,
+  BYOK_ENCRYPTION_KEY: "AQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQE",
   SCORE: {
     fetch: async (input: RequestInfo | URL, init?: RequestInit) => {
       const request = new Request(input, init);
@@ -63,7 +65,7 @@ beforeAll(async () => {
 });
 beforeEach(async () => {
   await testEnv.DB.exec(
-    "DELETE FROM jobs; DELETE FROM repo_settings; DELETE FROM audit_log; DELETE FROM cleanups; DELETE FROM cleanup_items; DELETE FROM triage_labels; DELETE FROM api_auth; DELETE FROM api_rate;",
+    "DELETE FROM jobs; DELETE FROM repo_settings; DELETE FROM audit_log; DELETE FROM cleanups; DELETE FROM cleanup_items; DELETE FROM triage_labels; DELETE FROM api_auth; DELETE FROM api_rate; DELETE FROM ai_providers;",
   );
   sent.splice(0);
   whoami = () => Response.json({ github_id: 7, scopes: ["scan", "bot"] });
@@ -484,5 +486,101 @@ describe("API limits", () => {
     const broken = { ...e, JOBS: { send: async () => { throw new Error("Queue send failed"); } } } as unknown as Env;
     await runCleanup(broken, cleanup.id);
     expect(await rows("SELECT state,lease FROM cleanups")).toEqual([{ state: "planning", lease: 0 }]);
+  });
+});
+
+describe("repository BYOK API", () => {
+  const own = { mode: "byok", provider: "llm", base_url: "https://api.openai.com/v1", model: "gpt-4o-mini", api_key: "user-private-test-key" };
+  const save = async (input: unknown = own) => {
+    authorized();
+    return call("/ai-provider", "PATCH", input);
+  };
+  it("stores encrypted credentials and exposes safe metadata to writable users", async () => {
+    const saved = await save();
+    expect(saved.status).toBe(200);
+    expect(saved.headers.get("cache-control")).toBe("no-store");
+    const metadata = await saved.json();
+    expect(metadata).toMatchObject({ ai_provider: { mode: "byok", provider: "llm", base_url: own.base_url, model: own.model, has_key: true, ready: true, storage_available: true, updated_at: expect.any(String) } });
+    expect(JSON.stringify(metadata)).not.toContain(own.api_key);
+    const stored = await rows("SELECT * FROM ai_providers");
+    expect(stored).toHaveLength(1);
+    expect(JSON.stringify(stored)).not.toContain(own.api_key);
+    expect(stored[0].encrypted_key).toMatch(/^v1\./);
+    expect(await rows("SELECT via,action,detail FROM audit_log")).toEqual([{ via: "api", action: "ai_provider.update", detail: '{"mode":"byok","provider":"llm","has_key":true}' }]);
+    authorized("write");
+    const read = await call("/ai-provider");
+    expect(read.status).toBe(200);
+    expect(JSON.stringify(await read.json())).not.toContain("encrypted_key");
+    const scoped = await resolveAIEnv(e, 100, repo);
+    expect(scoped.LLM_API_KEY).toBe(own.api_key);
+    expect(scoped.OPENROUTER_API_KEY).toBeUndefined();
+  });
+  it("requires fresh administrator permission for save, connection test and key removal", async () => {
+    expect((await save()).status).toBe(200);
+    for (const [path, method, input] of [["/ai-provider", "PATCH", own], ["/ai-provider/test", "POST", {}], ["/ai-provider/key", "DELETE", {}]] as const) {
+      authorized("write");
+      const denied = await call(path, method, input);
+      expect(denied.status).toBe(403);
+      expect(await denied.json()).toEqual({ error: "admin_required" });
+    }
+    expect(await rows("SELECT count(*) AS n FROM audit_log")).toEqual([{ n: 1 }]);
+    expect((await resolveAIEnv(e, 100, repo)).LLM_API_KEY).toBe(own.api_key);
+    expect(sent).toEqual([]);
+  });
+  it("does not redirect a retained key to another endpoint and rejects internal URLs", async () => {
+    expect((await save()).status).toBe(200);
+    const { api_key: _key, ...retained } = own;
+    expect((await save(retained)).status).toBe(200);
+    expect(await (await save({ ...retained, base_url: "https://other-provider.com/v1" })).json()).toEqual({ error: "key_required" });
+    for (const base_url of ["http://api.openai.com/v1", "https://127.0.0.1/v1", "https://[::1]/v1", "https://localhost/v1", "https://api.openai.com/v1?secret=x"]) {
+      const failed = await save({ ...own, base_url });
+      expect(failed.status).toBe(400);
+      expect(await failed.json()).toEqual({ error: "invalid_config" });
+    }
+    expect((await resolveAIEnv(e, 100, repo)).LLM_BASE_URL).toBe(own.base_url);
+    expect((await resolveAIEnv(e, 100, repo)).LLM_API_KEY).toBe(own.api_key);
+  });
+  it("uses the saved own key for explicit model tests and rate limits without GitHub writes", async () => {
+    expect((await save()).status).toBe(200);
+    for (const type of [1, 28]) pending.push({ url: `https://cloudflare-dns.com/dns-query?name=api.openai.com&type=${type}`, method: "GET", status: 200, body: JSON.stringify({ Status: 0, Answer: type === 1 ? [{ name: "api.openai.com", type: 1, data: "104.18.32.7" }] : [] }) });
+    pending.push({ url: own.base_url + "/chat/completions", method: "POST", status: 200, body: JSON.stringify({ choices: [{ message: { content: '{"labels":["bug"]}' } }] }) });
+    authorized();
+    const connected = await call("/ai-provider/test", "POST", {});
+    expect(connected.status).toBe(200);
+    expect(await connected.json()).toEqual({ connected: true, provider: "llm", model: own.model });
+    const modelCall = vi.mocked(fetch).mock.calls.find(([url]) => String(url).endsWith("/chat/completions"));
+    expect(new Headers(modelCall?.[1]?.headers).get("authorization")).toBe(`Bearer ${own.api_key}`);
+    expect(modelCall?.[1]?.redirect).toBe("manual");
+    const dnsCalls = vi.mocked(fetch).mock.calls.filter(([url]) => String(url).startsWith("https://cloudflare-dns.com"));
+    expect(dnsCalls.every(([, init]) => !new Headers(init?.headers).has("authorization"))).toBe(true);
+    authorized();
+    const second = await call("/ai-provider/test", "POST", {});
+    expect(second.status).toBe(429);
+    expect(second.headers.get("retry-after")).toBe("60");
+    expect(sent).toEqual([]);
+    expect(await rows("SELECT * FROM jobs")).toEqual([]);
+    expect(await rows("SELECT * FROM repo_settings")).toEqual([]);
+  });
+  it("removing the user key disables AI and requires explicit platform selection", async () => {
+    expect((await save()).status).toBe(200);
+    authorized();
+    const removed = await call("/ai-provider/key", "DELETE", {});
+    expect(removed.status).toBe(200);
+    expect(await removed.json()).toMatchObject({ ai_provider: { mode: "byok", has_key: false, ready: false } });
+    expect((await resolveAIEnv({ ...e, LLM_API_KEY: "platform-key" }, 100, repo)).LLM_API_KEY).toBeUndefined();
+    authorized();
+    expect((await call("/ai-provider/test", "POST", {})).status).toBe(503);
+    expect((await save({ mode: "platform" })).status).toBe(200);
+    expect((await resolveAIEnv({ ...e, LLM_API_KEY: "platform-key" }, 100, repo)).LLM_API_KEY).toBe("platform-key");
+  });
+  it("fails safely on unavailable encryption storage without admitting model requests", async () => {
+    const secret = e.BYOK_ENCRYPTION_KEY;
+    e.BYOK_ENCRYPTION_KEY = undefined;
+    try {
+      const response = await save();
+      expect(response.status).toBe(503);
+      expect(await response.json()).toEqual({ error: "storage_unavailable" });
+      expect(await rows("SELECT * FROM ai_providers")).toEqual([]);
+    } finally { e.BYOK_ENCRYPTION_KEY = secret; }
   });
 });

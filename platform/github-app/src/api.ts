@@ -1,4 +1,6 @@
 import { audit, recentAudit } from "./audit";
+import { AIProviderError, getAIProvider, putAIProvider, removeAIProviderKey, resolveAIEnv, type AIProviderMetadata } from "./byok";
+import { testAIProvider } from "./provider-test";
 import { repoLabels } from "./repo-labels";
 import {
   cancelCleanup,
@@ -220,6 +222,11 @@ async function body(request: Request): Promise<Record<string, unknown>> {
   }
 }
 const iso = (ms: number) => new Date(ms).toISOString();
+const providerJson = (x: AIProviderMetadata) => ({
+  mode: x.mode, provider: x.provider, base_url: x.baseUrl, model: x.model,
+  has_key: x.hasKey, storage_available: x.storageAvailable, ready: x.ready,
+  updated_at: x.updatedAt === null ? null : iso(x.updatedAt),
+});
 const jobJson = (x: Job) => ({
   id: x.id,
   kind: x.kind,
@@ -231,6 +238,7 @@ const jobJson = (x: Job) => ({
 });
 
 async function status(env: Env, c: Context) {
+  const aiEnv = await resolveAIEnv(env, c.repository, c.fullName);
   const [settings, last, recent, failed, cleanup, log] = await Promise.all([
     getSettings(env, c.repository, c.fullName),
     lastBackfill(env, c.repository),
@@ -255,8 +263,8 @@ async function status(env: Env, c: Context) {
     },
     viewer: { login: c.login, admin: c.admin },
     bot_enabled: env.ENABLED === "true",
-    llm_configured: llmConfigured(env),
-    triage_configured: triageConfigured(env),
+    llm_configured: llmConfigured(aiEnv),
+    triage_configured: triageConfigured(aiEnv),
     settings: settingsJson(settings),
     backfill: last
       ? { state: last.state, result: last.result, updated_at: iso(last.updated) }
@@ -277,6 +285,8 @@ async function route(
   if (rest === "" && method === "GET") return json(await status(env, c));
   if (rest === "/settings" && method === "GET")
     return json({ settings: settingsJson(await getSettings(env, c.repository, c.fullName)) });
+  if (rest === "/ai-provider" && method === "GET")
+    return json({ ai_provider: providerJson(await getAIProvider(env, c.repository, c.fullName)) });
   const cleanupMatch = /^\/cleanups\/([0-9a-f-]{36})(\/confirm|\/cancel)?$/.exec(rest);
   if (cleanupMatch && method === "GET") {
     const cleanup = await getCleanup(env, c.repository, cleanupMatch[1]);
@@ -286,12 +296,25 @@ async function route(
       items: await cleanupItems(env, cleanup.id),
     });
   }
-  if (method !== "POST" && method !== "PATCH")
+  if (method !== "POST" && method !== "PATCH" && !(method === "DELETE" && rest === "/ai-provider/key"))
     throw new Failure(405, "method_not_allowed");
   if (!c.admin) throw new Failure(403, "admin_required");
   const input = await body(request);
   const log = (action: string, detail?: Record<string, unknown>) =>
     audit(env, c.repository, c.login, "api", action, detail);
+
+  if (rest === "/ai-provider" && method === "PATCH") {
+    const config = await putAIProvider(env, c.repository, c.fullName, input, { login: c.login, via: "api" });
+    return json({ ai_provider: providerJson(config) });
+  }
+  if ((rest === "/ai-provider/key" && method === "DELETE") || (rest === "/ai-provider/test" && method === "POST")) {
+    if (Object.keys(input).length) throw new Failure(400, "invalid_body");
+    if (method === "DELETE")
+      return json({ ai_provider: providerJson(await removeAIProviderKey(env, c.repository, c.fullName, { login: c.login, via: "api" })) });
+    const result = await testAIProvider(env, c.repository, c.fullName);
+    await log("ai_provider.test", result);
+    return json({ connected: true, ...result });
+  }
 
   if (rest === "/settings" && method === "PATCH") {
     const current = await getSettings(env, c.repository, c.fullName);
@@ -455,6 +478,11 @@ export async function api(request: Request, env: Env): Promise<Response> {
     const c = await authorize(env, request, match[1], match[2], deadline);
     return await route(env, request, c, (match[3] ?? "").replace(/\/$/, ""));
   } catch (error) {
+    if (error instanceof AIProviderError) {
+      const response = json({ error: error.code }, error.status);
+      if (error.code === "rate_limited") response.headers.set("Retry-After", "60");
+      return response;
+    }
     if (error instanceof Failure) {
       const response = json({ error: error.code }, error.status);
       if (error.retryAfter)
