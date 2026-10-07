@@ -1400,20 +1400,147 @@
     "slotOpen": "Slot tersedia"
   },
   "githubBot": {
-    "metaTitle": "ghfind Review — GitHub App yang melabeli issue dan PR berdasarkan skor penulis",
-    "metaDescription": "Pasang GitHub App ghfind Review untuk menambahkan label berwarna ke setiap issue dan pull request baru, berdasarkan skor ghfind publik penulisnya.",
+    "metaTitle": "ghfind Review | Bot GitHub untuk klasifikasi Issue dan PR",
+    "metaDescription": "Kelola label skor penulis, klasifikasi konten opsional, pratinjau, pemrosesan kiriman lama, dan pembersihan melalui konsol Bot ghfind Review atau CLI.",
     "topline": {
       "section": "Integrasi",
       "current": "GitHub Bot"
     },
     "hero": {
-      "eyebrow": "GitHub App · Gratis",
-      "title": "Pilah issue dan PR berdasarkan siapa pembuatnya",
-      "subtitle": "ghfind Review menambahkan label review: berwarna ke setiap issue dan pull request baru, berdasarkan skor ghfind publik penulisnya. Tanpa workflow, token, atau secret yang perlu diatur.",
-      "install": "Pasang di GitHub",
-      "status": "Buka halaman status",
+      "eyebrow": "ghfind Review · GitHub App",
+      "title": "Klasifikasi Issue dan PR,\ndi bawah kendali Anda.",
+      "subtitle": "Beri label pada Issue dan PR berdasarkan skor penulis atau konten. Kelola otomatisasi melalui konsol Bot.",
+      "admin": "Buka konsol Bot",
+      "install": "Instal di GitHub",
+      "status": "Beranda Bot",
       "note": "Berjalan sebagai ghfind-review[bot]. Hanya menambahkan label — tidak pernah berkomentar, menutup, atau memblokir kiriman."
     },
+    "console": {
+      "heading": "Ruang kerja Bot Anda",
+      "note": "Masuk dengan GitHub. Konsol menampilkan instalasi dan repositori yang dapat Anda akses.",
+      "items": {
+        "overview": {
+          "title": "Dasbor",
+          "body": "Gambaran umum seluruh instalasi GitHub Anda."
+        },
+        "repositories": {
+          "title": "Repositori",
+          "body": "Atur label serta jeda atau lanjutkan pemrosesan."
+        },
+        "tasks": {
+          "title": "Tugas",
+          "body": "Pantau pemrosesan kiriman lama dan coba lagi tugas yang gagal."
+        },
+        "activity": {
+          "title": "Aktivitas",
+          "body": "Tinjau perubahan konfigurasi dan riwayat pembersihan."
+        }
+      },
+      "preview": "Konsol Bot · Data demo lokal",
+      "screenshotAlt": "Dasbor Bot yang menampilkan ringkasan instalasi, status repositori, tugas, dan aktivitas terbaru."
+    },
+    "classification": {
+      "heading": "Dua jenis label. Dua sinyal berbeda.",
+      "lead": "Pisahkan konteks profil penulis dari topik kontribusinya.",
+      "score": {
+        "mode": "Konteks profil penulis",
+        "title": "Label skor penulis",
+        "body": "Untuk Issue dan PR baru, Bot mengambil skor ghfind publik penulis lalu menerapkan label review:. Skor ini menggambarkan profil publik, bukan kualitas kontribusi.",
+        "example": "Lima rentang skor, termasuk label no-score yang jelas saat skor tidak tersedia."
+      },
+      "intent": {
+        "mode": "Opsional · Nonaktif secara bawaan",
+        "title": "Klasifikasi konten",
+        "body": "Bandingkan judul dan isi Issue atau PR dengan deskripsi label yang sudah ada dan Anda pilih. Saat diaktifkan, pengklasifikasi dapat menambahkan hingga tiga label yang cocok tanpa membuat atau mengganti nama label.",
+        "example": "Memerlukan layanan klasifikasi yang sudah dikonfigurasi. Coba saran di konsol sebelum mengaktifkannya. Klasifikasi AI terpisah dari skor penulis dan mungkin perlu dikoreksi."
+      }
+    },
+    "operations": {
+      "heading": "Lihat pratinjau. Lalu putuskan.",
+      "lead": "Kendalikan setiap repositori secara terpisah, dengan perubahan tercatat dalam log aktivitas.",
+      "items": {
+        "preview": {
+          "title": "Uji saran label",
+          "body": "Uji contoh Issue atau PR dengan definisi label yang tersimpan. Pratinjau tidak mengubah GitHub dan tidak menyimpan teks contoh. Memerlukan layanan klasifikasi yang sudah dikonfigurasi."
+        },
+        "backfill": {
+          "title": "Proses kiriman yang sudah ada",
+          "body": "Mulai sendiri pemrosesan 1–100 Issue dan PR terbuka terbaru. Instalasi hanya menyiapkan label skor; tidak otomatis memproses kiriman lama."
+        },
+        "cleanup": {
+          "title": "Tinjau dan batalkan perubahan Bot",
+          "body": "Lihat pratinjau penghapusan yang memenuhi syarat sebelum mengonfirmasi. Pembersihan hanya menghapus perubahan yang dapat dipastikan berasal dari Bot ini; label yang ditambahkan kembali secara manual dan perubahan yang asalnya tidak jelas tetap dipertahankan."
+        }
+      }
+    },
+    "cli": {
+      "heading": "Kendali yang sama, dari terminal Anda.",
+      "body": "CLI Go, JavaScript, dan Python mendukung status, jeda, lanjutkan, pemrosesan kiriman lama, percobaan ulang, dan pembersihan. Gunakan token dengan izin Bot yang diberikan secara eksplisit; akses repositori tetap diperlukan.",
+      "link": "Panduan CLI dan API",
+      "example": "Contoh perintah · ganti owner/repo",
+      "note": "Perintah cleanup menampilkan pratinjau penghapusan. Konfirmasi terpisah diperlukan untuk menerapkannya."
+    },
+    "reference": {
+      "heading": "Label skor penulis dan filter pencarian GitHub"
+    },
+    "labels": {
+      "heading": "Lima rentang skor penulis",
+      "lead": "Label skor yang belum ada dibuat saat instalasi. Warna dan deskripsi kustom yang sudah ada dipertahankan.",
+      "items": {
+        "low": {
+          "range": "0 – 39",
+          "desc": "Lebih sedikit sinyal pada profil publik."
+        },
+        "medium": {
+          "range": "40 – 69",
+          "desc": "Sinyal profil publik pada rentang menengah."
+        },
+        "high": {
+          "range": "70 – 89",
+          "desc": "Sinyal profil publik yang lebih kuat."
+        },
+        "top": {
+          "range": "90 – 100",
+          "desc": "Rentang tertinggi dalam indeks ghfind."
+        },
+        "noScore": {
+          "range": "Tanpa skor",
+          "desc": "Tidak tersedia bukan berarti nol. Kegagalan sementara dicoba lagi setelah 20 dan 60 menit."
+        }
+      }
+    },
+    "queues": {
+      "heading": "Filter di GitHub",
+      "lead": "Tempel filter ke pencarian Issues repositori Anda. Ganti is:issue dengan is:pr untuk mencari pull request.",
+      "items": {
+        "high": "Rentang skor tinggi",
+        "top": "Rentang skor tertinggi",
+        "low": "Rentang skor rendah",
+        "noScore": "Skor tidak tersedia"
+      }
+    },
+    "notes": {
+      "heading": "Instalasi, data, dan kendali",
+      "install": {
+        "heading": "Mulai dari repositori pilihan",
+        "body": "Instal GitHub App dengan akses baca/tulis untuk Issues dan Pull requests. Tidak perlu workflow, PAT, atau secret di repositori. Repositori organisasi mungkin memerlukan persetujuan pemilik."
+      },
+      "privacy": {
+        "heading": "Ketahui data yang diproses",
+        "body": "Penilaian menggunakan profil publik penulis. Klasifikasi opsional mengirim judul, isi, dan deskripsi label terpilih ke layanan AI yang dikonfigurasi. Komentar nonaktif secara bawaan; jika diaktifkan, komentar berisi pengantar dan ringkasan skor penulis, bukan ulasan kode.",
+        "link": "Baca pemberitahuan privasi"
+      },
+      "stop": {
+        "heading": "Jeda atau hapus Bot",
+        "body": "Jeda pemrosesan per repositori dari konsol, atau hapus App melalui pengaturan GitHub. Label yang sudah ada tetap tersimpan; gunakan pembersihan untuk meninjau perubahan Bot yang memenuhi syarat secara terpisah."
+      },
+      "rescore": {
+        "heading": "Minta penilaian ulang",
+        "body": "Setelah percobaan ulang otomatis, penulis atau admin repositori dapat berkomentar @ghfind-review di issue untuk menilai ulang."
+      }
+    },
+    "disclaimer": "Skor mencerminkan profil GitHub publik penulis, bukan kualitas kontribusi ini. Kontributor baru mungkin hanya memiliki riwayat publik yang singkat.",
+    "source": "Kode sumber dan panduan hosting mandiri",
     "preview": {
       "label": "Contoh daftar issue dengan label review",
       "heading": "Issues",
@@ -1421,32 +1548,6 @@
         "top": "Crash saat mengurai konfigurasi bertingkat",
         "medium": "Tambah mode gelap di pengaturan",
         "noScore": "Salah ketik di README"
-      }
-    },
-    "labels": {
-      "heading": "Lima label, sekali lihat",
-      "lead": "Label yang belum ada dibuat saat pemasangan. Warna atau deskripsi yang sudah Anda ubah tetap dipertahankan.",
-      "items": {
-        "low": {
-          "range": "0 – 39",
-          "desc": "Sinyal publik minim. Periksa sumbernya dulu."
-        },
-        "medium": {
-          "range": "40 – 69",
-          "desc": "Profil kontributor pada umumnya."
-        },
-        "high": {
-          "range": "70 – 89",
-          "desc": "Sinyal profil publik yang kuat."
-        },
-        "top": {
-          "range": "90 – 100",
-          "desc": "Teratas di indeks ghfind."
-        },
-        "noScore": {
-          "range": "Tanpa skor",
-          "desc": "Skor tidak tersedia, bukan nol. Dicoba lagi setelah 20 dan 60 menit."
-        }
       }
     },
     "steps": {
@@ -1465,34 +1566,7 @@
           "body": "Saat dipasang, halaman awal issue dan PR yang masih terbuka juga diberi label. Edit atau buka ulang tidak dinilai ulang."
         }
       }
-    },
-    "queues": {
-      "heading": "Ubah rentang skor menjadi antrean review",
-      "lead": "Tempel filter ke pencarian issue repositori Anda dan mulai dari antrean yang sesuai waktu Anda.",
-      "items": {
-        "high": "Issue skor tinggi",
-        "top": "Issue skor teratas",
-        "low": "Issue skor rendah untuk diverifikasi",
-        "noScore": "Tanpa skor — perlu konteks"
-      }
-    },
-    "notes": {
-      "rescore": {
-        "heading": "Minta penilaian ulang",
-        "body": "Setelah percobaan ulang otomatis, penulis atau admin repositori dapat berkomentar @ghfind-review di issue untuk menilai ulang."
-      },
-      "privacy": {
-        "heading": "Data yang disentuh",
-        "body": "Tidak membaca kode sumber maupun isi issue. Hanya menyimpan instalasi, repositori, nomor issue, skor, dan status job; job selesai dihapus setelah 30 hari. Penulis dengan email publik bisa menerima paling banyak satu email skor per 72 jam, dengan berhenti langganan sekali klik.",
-        "link": "Pemberitahuan privasi"
-      },
-      "stop": {
-        "heading": "Berhenti kapan saja",
-        "body": "Hapus repositori, tangguhkan, atau copot app dari pengaturan GitHub. Label yang sudah ada tetap tersimpan."
-      }
-    },
-    "disclaimer": "Skor mencerminkan profil GitHub publik penulis, bukan kualitas kontribusi ini. Kontributor baru mungkin hanya punya sedikit jejak publik.",
-    "source": "Kode sumber dan panduan self-hosting"
+    }
   },
   "integrations": {
     "eyebrow": "For developers and agents",
