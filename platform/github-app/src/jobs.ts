@@ -1,4 +1,5 @@
 import { enqueueAuthorEmail, scoreContext } from "./author-email";
+import { resolveAIEnv } from "./byok";
 import {
   ApiError,
   appJWT,
@@ -476,14 +477,17 @@ async function processJob(env: Env, job: Job) {
   // Rescore and mention jobs follow a first job that already had its chance.
   const followUp =
     rescoreGeneration(job.id) > 0 || job.id.startsWith("mention-");
+  const aiEnv = !followUp && (settings.triageEnabled || settings.commentsEnabled)
+    ? await resolveAIEnv(env, job.repository!, fullName)
+    : env;
   if (
     settings.triageEnabled &&
     settings.allowedLabels.length &&
     !followUp &&
-    triageConfigured(env)
+    triageConfigured(aiEnv)
   )
     await triage(
-      env,
+      aiEnv,
       api,
       job.repository,
       fullName,
@@ -527,9 +531,9 @@ async function processJob(env: Env, job: Job) {
               ))
             )
               return null;
-            return llmConfigured(env)
+            return llmConfigured(aiEnv)
               ? introFor(
-                  env,
+                  aiEnv,
                   settings.commentPrompt,
                   login,
                   score,

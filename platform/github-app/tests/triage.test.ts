@@ -17,12 +17,14 @@ import {
 } from "../src/review";
 import { DEFAULT_SETTINGS, putSettings, RepoSettings } from "../src/settings";
 import { pickLabels, sanitizeIntro } from "../src/triage";
+import { putAIProvider, removeAIProviderKey } from "../src/byok";
 
 declare const TEST_SQL: string[];
 const testEnv = env as Env;
-const llmEnv: Env = { ...testEnv, LLM_API_KEY: "sk-test" };
+const llmEnv: Env = { ...testEnv, LLM_API_KEY: "sk-test", BYOK_ENCRYPTION_KEY: "AQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQE" };
 const api = "https://api.github.com";
 const LLM = "https://api.stepfun.com/v1/chat/completions";
+const OWN_LLM = "https://api.openai.com/v1/chat/completions";
 const repo = "AsperforMias/test-bot";
 const slug = "ghfind-review-test";
 const issuePath = `/repos/${repo}/issues/1`;
@@ -106,7 +108,7 @@ beforeAll(async () => {
 });
 beforeEach(async () => {
   await testEnv.DB.exec(
-    "DELETE FROM jobs; DELETE FROM author_comment_once; DELETE FROM noscore_comment_budget; DELETE FROM repo_settings; DELETE FROM triage_labels;",
+    "DELETE FROM jobs; DELETE FROM author_comment_once; DELETE FROM noscore_comment_budget; DELETE FROM repo_settings; DELETE FROM triage_labels; DELETE FROM ai_providers;",
   );
   llm = () => reply('{"labels":[]}');
   vi.stubGlobal(
@@ -116,7 +118,9 @@ beforeEach(async () => {
       const method = init.method ?? "GET";
       const body = typeof init.body === "string" ? init.body : "";
       calls.push({ url, method, body });
-      if (url === LLM) return llm(JSON.parse(body));
+      if (url === LLM || url === OWN_LLM) return llm(JSON.parse(body));
+      if (url.startsWith("https://cloudflare-dns.com/dns-query?name=api.openai.com&"))
+        return Response.json({ Status: 0, Answer: url.endsWith("type=1") ? [{ name: "api.openai.com", type: 1, data: "104.18.32.7" }] : [] });
       const at = routes.findIndex(
         (x) =>
           x.url === url &&
@@ -500,5 +504,55 @@ describe("comments", () => {
     const out = sanitizeIntro(`> @a <script>x</script> ${"z".repeat(900)}`);
     expect(out.startsWith("@\u200da x z")).toBe(true);
     expect(Array.from(out).length).toBeLessThanOrEqual(600);
+  });
+});
+
+describe("BYOK job execution", () => {
+  const userKey = "repository-owned-test-key";
+  const configureOwn = () => putAIProvider(llmEnv, 100, repo, { mode: "byok", provider: "llm", base_url: "https://api.openai.com/v1", model: "gpt-4o-mini", api_key: userKey }, "admin");
+  it("uses the repository provider for both semantic labels and AI greetings", async () => {
+    await configureOwn();
+    await configure({ triageEnabled: true, allowedLabels: ["bug"], commentsEnabled: true, commentPrompt: "Welcome the contributor." });
+    await add("byok-own-both");
+    labelJob();
+    llm = (request) => reply(request.messages[0].content.includes("classify") ? '{"labels":["bug"]}' : `Welcome! ${userKey}`);
+    route(`${issuePath}/labels`, {}, "POST", 200, { labels: ["bug"] });
+    route(`${issuePath}/comments?per_page=100&page=1`, []);
+    route(`${issuePath}/comments`, { id: 1 }, "POST");
+    await runJob(llmEnv, "byok-own-both");
+    expect(await job("byok-own-both")).toMatchObject({ state: "done", result: LABELS[2] });
+    const modelRequests = vi.mocked(fetch).mock.calls.filter(([url]) => String(url) === OWN_LLM);
+    expect(modelRequests).toHaveLength(2);
+    expect(modelRequests.every(([, init]) => new Headers(init?.headers).get("authorization") === `Bearer ${userKey}`)).toBe(true);
+    expect(modelRequests.every(([, init]) => JSON.parse(String(init?.body)).model === "gpt-4o-mini")).toBe(true);
+    expect(llmCalls()).toEqual([]);
+    expect(await recorded()).toEqual([{ number: 1, label: "bug" }]);
+    const comment = commentCalls().find(x => x.method === "POST");
+    expect(comment?.body).not.toContain(userKey);
+    expect(comment?.body).toContain("redacted");
+    expect(comment?.body).toContain("82.7 / 100");
+  });
+  it("removed BYOK credentials disable AI while keeping ordinary score labels", async () => {
+    await configureOwn();
+    await removeAIProviderKey(llmEnv, 100, repo, "admin");
+    await configure({ triageEnabled: true, allowedLabels: ["bug"] });
+    await add("byok-removed");
+    labelJob();
+    await runJob(llmEnv, "byok-removed");
+    expect(await job("byok-removed")).toMatchObject({ state: "done", result: LABELS[2] });
+    expect(calls.filter(x => x.url === OWN_LLM || x.url === LLM)).toEqual([]);
+    expect(await recorded()).toEqual([]);
+  });
+  it("a BYOK provider failure never falls back to a platform credential", async () => {
+    await configureOwn();
+    await configure({ triageEnabled: true, allowedLabels: ["bug"] });
+    await add("byok-failed");
+    labelJob();
+    llm = () => new Response("private provider failure", { status: 401 });
+    await runJob(llmEnv, "byok-failed");
+    expect(await job("byok-failed")).toMatchObject({ state: "done", result: LABELS[2] });
+    expect(calls.filter(x => x.url === OWN_LLM)).toHaveLength(1);
+    expect(llmCalls()).toEqual([]);
+    expect(await recorded()).toEqual([]);
   });
 });
