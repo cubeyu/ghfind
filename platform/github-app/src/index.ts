@@ -182,8 +182,12 @@ export default {
     }
   },
   async scheduled(_controller: ScheduledController, env: Env) {
-    await dispatch(env);
-    await sendAuthorEmails(env);
-    await dispatchCleanups(env);
+    // Independent steps, in order: one failing must not stop the others.
+    let failure: unknown = null;
+    for (const step of [dispatch, sendAuthorEmails, dispatchCleanups])
+      await step(env).catch((error: unknown) => {
+        failure ??= error;
+      });
+    if (failure) throw failure;
   },
 } satisfies ExportedHandler<Env, Message>;
