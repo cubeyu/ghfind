@@ -1408,7 +1408,7 @@
   },
   "githubBot": {
     "metaTitle": "ghfind Review | Issue 和 PR 分类与管理 Bot",
-    "metaDescription": "通过 ghfind Review Bot 后台或 CLI 管理作者评分标签、可选内容语义打标、建议预览、手动回填和 Bot 清理。",
+    "metaDescription": "ghfind Review 提供作者评分、内容语义打标、预览与清理，并支持按仓库接入自己的 AI 服务（BYOK）。",
     "topline": {
       "section": "集成",
       "current": "GitHub Bot"
@@ -1458,8 +1458,33 @@
         "mode": "可选功能 · 默认关闭",
         "title": "内容语义打标",
         "body": "将 Issue 或 PR 的标题、正文与管理员选择的现有 label description 比较。开启后，分类器最多添加三个匹配标签，不创建或重命名标签。",
-        "example": "需要已配置分类服务。先在后台试跑打标建议，再决定是否启用。AI 分类与作者评分独立，结果可能需要人工修正。"
+        "example": "需要已配置分类服务。先在后台试跑打标建议，再决定是否启用。AI 分类与作者评分独立，结果可能需要人工修正。 在仓库设置中接入自己的 AI 服务。"
       }
+    },
+    "byok": {
+      "heading": "接入自己的 AI 服务",
+      "lead": "使用自己的 API 地址、密钥和模型。按仓库独立配置，自行选择平台服务或自有服务。",
+      "cta": "配置自己的 AI 服务",
+      "setup": "先打开仓库，再进入 AI 服务。保存配置需要仓库管理员权限。",
+      "items": {
+        "provider": {
+          "title": "按仓库选择服务",
+          "body": "在平台服务与自己的公开 HTTPS API 地址之间切换，每个仓库分别保存配置。"
+        },
+        "protocol": {
+          "title": "选择协议与模型",
+          "body": "OpenAI 兼容的 Chat Completions 支持内容分类和开场白生成；Jev Decisions 仅用于内容分类。"
+        },
+        "key": {
+          "title": "安全保存密钥",
+          "body": "API Key 加密存储，保存后不会再次显示。可在后台替换或移除已保存的密钥。"
+        },
+        "test": {
+          "title": "开启前先测试",
+          "body": "主动测试已保存的连接，不修改 GitHub，也不保存样本文本。内容分类仍默认关闭。"
+        }
+      },
+      "billing": "调用费用由自己的服务商按密钥计费。自有服务失败时，Bot 不会悄悄切换到平台服务。"
     },
     "operations": {
       "heading": "先看建议，再决定如何执行",
