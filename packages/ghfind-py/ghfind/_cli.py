@@ -23,8 +23,9 @@ import sys
 from typing import Any, Dict, List, Optional
 
 from . import __version__
+from .bot import DEFAULT_BOT_HOST, BotClient, BotUsageError, run_bot
 from .catalog import CATALOG, DEFAULT_HOST
-from .client import GhFind, GhFindError
+from .client import GhFind, GhFindError, Transport
 
 _SUB_SCORE_ORDER = [
     "account_maturity",
@@ -356,6 +357,34 @@ def _cmd_auth_status(args: argparse.Namespace) -> None:
     _out(f'byo llm key (for roast): {"configured" if body["has_byo_key"] else "missing"}')
 
 
+# Test hooks: tests swap these to stub the bot API and skip real sleeps.
+_bot_transport: Optional[Transport] = None
+_bot_sleep: Optional[Any] = None
+
+
+def _bot_client(args: argparse.Namespace) -> BotClient:
+    host = getattr(args, "bot_host", None) or os.environ.get("GHFIND_BOT_HOST") or DEFAULT_BOT_HOST
+    api_key = (
+        getattr(args, "api_key", None)
+        or os.environ.get("GHFIND_API_KEY")
+        or os.environ.get("GITHUB_ROAST_API_KEY")
+    )
+    return BotClient(host, api_key, transport=_bot_transport, sleep=_bot_sleep)
+
+
+def _cmd_bot(args: argparse.Namespace) -> None:
+    try:
+        run_bot(
+            _bot_client(args),
+            args.bot_command,
+            vars(args),
+            json_output=_output_mode(args) == "json",
+            print_=_out,
+        )
+    except BotUsageError as e:
+        _fail(str(e))
+
+
 # ---- parser ----------------------------------------------------------------
 
 
@@ -436,6 +465,65 @@ def _build_parser() -> argparse.ArgumentParser:
     auth_sub = auth.add_subparsers(dest="auth_command", required=True)
     ap = auth_sub.add_parser("status", parents=[common])
     ap.set_defaults(func=_cmd_auth_status)
+
+    bot = sub.add_parser(
+        "bot",
+        help="Manage the ghfind Review GitHub App on repositories you administer (personal API token).",
+        description=(
+            "Manage the ghfind Review GitHub App on repositories you administer. Needs a personal "
+            "API token (--api-key / GHFIND_API_KEY, ghf_...). GHFIND_BOT_HOST or --bot-host "
+            f"overrides {DEFAULT_BOT_HOST}."
+        ),
+    )
+    bot_common = argparse.ArgumentParser(add_help=False, parents=[common])
+    bot_common.add_argument("--bot-host", help=f"default {DEFAULT_BOT_HOST} (or GHFIND_BOT_HOST)")
+    bot_sub = bot.add_subparsers(dest="bot_command", required=True)
+
+    def add_bot(name: str, **kw):
+        p = bot_sub.add_parser(name, parents=[bot_common], **kw)
+        p.set_defaults(func=_cmd_bot)
+        return p
+
+    add_bot("whoami", help="Show the GitHub account behind your API token.")
+    p = add_bot("status", help="Settings, jobs, latest cleanup and audit log for one repository.")
+    p.add_argument("repo", metavar="owner/repo")
+    p = add_bot("settings", help="Read or change the bot's repository settings.")
+    p.add_argument("action", choices=["get", "set"])
+    p.add_argument("repo", metavar="owner/repo")
+    p.add_argument("--issues", metavar="on|off")
+    p.add_argument("--prs", metavar="on|off")
+    p.add_argument("--comments-enabled", metavar="on|off")
+    p.add_argument("--triage", metavar="on|off")
+    p.add_argument("--prompt", metavar="TEXT")
+    p.add_argument("--allowed-labels", metavar="a,b")
+    for name, text in (
+        ("pause", "Turn off issue and PR processing and cancel queued jobs. Admin only."),
+        ("resume", "Turn issue and PR processing back on. Admin only."),
+    ):
+        p = add_bot(name, help=text)
+        p.add_argument("repo", metavar="owner/repo")
+    p = add_bot("backfill", help="Queue the newest open issues and PRs (1-100, default 25). Admin only.")
+    p.add_argument("repo", metavar="owner/repo")
+    p.add_argument("-n", "--limit", metavar="N")
+    p = add_bot("retry", help="Requeue failed jobs (or one job). Admin only.")
+    p.add_argument("repo", metavar="owner/repo")
+    p.add_argument("job_id", nargs="?", metavar="job-id")
+    p = add_bot(
+        "cleanup",
+        help="Preview removing what the bot wrote; then 'cleanup confirm <owner/repo> <token>'.",
+        description=(
+            "ghfind bot cleanup <owner/repo> [--labels review|triage|all|none] [--comments] "
+            "[--delete-label-definitions] [--no-wait]  |  "
+            "ghfind bot cleanup confirm <owner/repo> <confirm-token> [--wait]  |  "
+            "ghfind bot cleanup status|cancel <owner/repo> <cleanup-id>"
+        ),
+    )
+    p.add_argument("target", nargs="+", metavar="ARG", help="<owner/repo> | confirm|status|cancel <owner/repo> <id>")
+    p.add_argument("--labels", metavar="review|triage|all|none")
+    p.add_argument("--comments", action="store_true")
+    p.add_argument("--delete-label-definitions", action="store_true")
+    p.add_argument("--no-wait", action="store_true", help="return the preview without waiting for the plan")
+    p.add_argument("--wait", action="store_true", help="confirm: wait for the cleanup to finish (up to 10 min)")
 
     return parser
 
