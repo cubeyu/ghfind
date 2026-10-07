@@ -1401,7 +1401,7 @@
   },
   "githubBot": {
     "metaTitle": "ghfind Review | GitHub Bot for Issue and PR triage",
-    "metaDescription": "Manage author-score labels, optional content classification, previews, backfills and cleanup from the ghfind Review Bot console or CLI.",
+    "metaDescription": "ghfind Review combines author-score labels and content classification with previews, cleanup and your own AI service (BYOK), managed per repository.",
     "topline": {
       "section": "Integrations",
       "current": "GitHub Bot"
@@ -1451,8 +1451,33 @@
         "mode": "Optional · Off by default",
         "title": "Content classification",
         "body": "Compare the Issue or PR title and body with descriptions of existing labels you select. When enabled, the classifier can add up to three matching labels without creating or renaming any labels.",
-        "example": "Requires a configured classification service. Try a suggestion in the console before enabling it. AI classification is separate from the author score and may need correction."
+        "example": "Requires a configured classification service. Try a suggestion in the console before enabling it. AI classification is separate from the author score and may need correction. Connect your own AI service in repository settings."
       }
+    },
+    "byok": {
+      "heading": "Use your own AI service",
+      "lead": "Bring your endpoint, API key and model. Configure each repository separately, then choose your service or the platform service.",
+      "cta": "Configure your AI service",
+      "setup": "Open a repository, then choose AI service. Saving requires repository admin access.",
+      "items": {
+        "provider": {
+          "title": "Choose the service per repository",
+          "body": "Switch between the platform service and your own public HTTPS API base URL. Each repository keeps its own configuration."
+        },
+        "protocol": {
+          "title": "Choose the protocol and model",
+          "body": "OpenAI-compatible Chat Completions can classify content and generate greetings. Jev Decisions classifies content only."
+        },
+        "key": {
+          "title": "Keep your key private",
+          "body": "API keys are encrypted at rest and never shown again. Replace or remove a saved key from the console."
+        },
+        "test": {
+          "title": "Test before enabling",
+          "body": "Explicitly test the saved connection. The test makes no GitHub changes and stores no sample text. Content classification remains off by default."
+        }
+      },
+      "billing": "Your provider bills requests to your key. If your own service fails, the Bot does not silently switch to the platform service."
     },
     "operations": {
       "heading": "Preview first. Then decide.",
