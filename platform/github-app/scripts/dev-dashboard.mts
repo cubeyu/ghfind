@@ -11,6 +11,7 @@ import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { seal } from "../src/secrets.ts";
+import { JEV_REQUEST_VERSION } from "../src/jev.ts";
 
 async function main() {
   const args = process.argv.slice(2);
@@ -62,7 +63,8 @@ async function main() {
     state: "open", user: { id: 1, login: "octo-admin", type: "User" }, labels: [],
     html_url: "https://github.com/sample/maintainer-dashboard/issues/42" };
   let decisionCalls = 0;
-  let lastDecision: { status: number; latencyMs: number } | null = null;
+  let githubWriteAttempts = 0;
+  let lastDecision: { status: number; latencyMs: number; requestVersion: string; requestSha256: string; model?: string; usage?: { inputTokens: number; outputTokens: number; cost?: number } } | null = null;
   const outbound = async (request: Request) => {
     const url = new URL(request.url);
     if (liveJev && request.url === jevEndpoint && request.method === "POST") {
@@ -72,17 +74,29 @@ async function main() {
       // Real provider response, including non-2xx errors. Never return synthetic
       // probabilities or pretend an unavailable classifier succeeded.
       const start = performance.now();
+      const decisionBody = await request.arrayBuffer();
+      const requestSha256 = createHash("sha256").update(Buffer.from(decisionBody)).digest("hex");
       // Preserve the production protocol without Miniflare bridge transport
       // headers such as Host/content-length (verified by Worker live E2E).
       const result = await fetch(request.url, { method: "POST", headers: {
         authorization: `Bearer ${openrouterKey}`, "content-type": "application/json",
         accept: "application/json", "user-agent": "ghfind-review",
-      }, body: await request.arrayBuffer(), redirect: "manual", signal: AbortSignal.timeout(30_000) });
-      lastDecision = { status: result.status, latencyMs: Math.round(performance.now() - start) };
+      }, body: decisionBody, redirect: "manual", signal: AbortSignal.timeout(30_000) });
+      lastDecision = { status: result.status, latencyMs: Math.round(performance.now() - start), requestVersion: JEV_REQUEST_VERSION, requestSha256 };
+      if (result.ok) {
+        // Store only approved non-content provider metadata. Never expose auth,
+        // request text, provider error bodies, or response headers through health.
+        const metadata = await result.clone().json().catch(() => null) as Record<string, unknown> | null;
+        if (metadata && typeof metadata.model === "string" && /^typesafe\/jev-1\.13(?:-\d{8})?$/.test(metadata.model)) lastDecision.model = metadata.model;
+        const usage = metadata?.usage as Record<string, unknown> | undefined;
+        const nonnegative = (value: unknown): value is number => typeof value === "number" && Number.isFinite(value) && value >= 0;
+        if (usage && Number.isSafeInteger(usage.input_tokens) && Number.isSafeInteger(usage.output_tokens) && nonnegative(usage.input_tokens) && nonnegative(usage.output_tokens)) lastDecision.usage = { inputTokens: usage.input_tokens, outputTokens: usage.output_tokens, ...(nonnegative(usage.cost) ? { cost: usage.cost } : {}) };
+      }
       return result;
     }
     if (url.origin !== "https://api.github.com")
       return Response.json({ error: "Preview blocks this outbound endpoint" }, { status: 502 });
+    if (request.method !== "GET") githubWriteAttempts++;
     const path = url.pathname;
     if (request.method === "GET" && request.headers.get("authorization") === `Bearer ${userToken}`) {
       if (path === "/user") return Response.json({ id: 1, login: "octo-admin" });
@@ -219,13 +233,21 @@ async function main() {
     audit: Number((await db.prepare("SELECT COUNT(*) AS count FROM audit_log").first()).count),
   };
 
+  const currentLedger = async () => {
+    // Loopback-only read-only diagnostics of the real D1 fixture ledger. Hashes
+    // demonstrate preview admission did not update existing rows or save input.
+    const tables = ["jobs", "audit_log", "triage_labels", "repo_settings"] as const;
+    const rows = await db.batch(tables.flatMap(table => [db.prepare(`SELECT COUNT(*) AS count FROM ${table}`), db.prepare(`SELECT * FROM ${table} ORDER BY rowid LIMIT 1000`)]));
+    return Object.fromEntries(tables.map((table, index) => { const count = Number(rows[index * 2].results[0].count); return [table, { count, truncated: count > 1000, sha256: createHash("sha256").update(JSON.stringify(rows[index * 2 + 1].results)).digest("hex") }]; }));
+  };
+
   const server = createServer(async (request, response) => {
     try {
       const url = new URL(request.url || "/", origin);
       if (url.pathname === "/__preview/health") {
         response.setHeader("content-type", "application/json");
         response.end(JSON.stringify({ fixture: true, worker: "src/index.ts", database: "isolated ephemeral D1", migrations: migrations.length,
-          builtAt, bundleSha256, installationCount, seedRows, installations: installations.map(({ id, account }) => ({ id, account: account.login })), model: liveJev ? "real Jev enabled explicitly" : "disabled", decisionCalls, lastDecision }));
+          builtAt, bundleSha256, installationCount, seedRows, installations: installations.map(({ id, account }) => ({ id, account: account.login })), model: liveJev ? "real Jev enabled explicitly" : "disabled", decisionCalls, lastDecision, githubWriteAttempts, currentLedger: await currentLedger(), rateLimitRows: Number((await db.prepare("SELECT COUNT(*) AS count FROM api_rate").first()).count) }));
         return;
       }
       const headers = new Headers();
