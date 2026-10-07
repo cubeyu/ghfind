@@ -299,7 +299,7 @@ function home(view: View, env: Env) {
   return html(
     view,
     h.title,
-    `<div class="hero"><div><span class="eyebrow">${escape(h.eyebrow)}</span><h1>${escape(h.title)}</h1><p class="lead">${escape(h.subtitle)}</p><div class="actions">${install}<a class="btn" href="${siteUrl(locale, "/github-bot")}">${escape(h.learnMore)}</a></div>${rollout}</div>
+    `<div class="hero"><div><span class="eyebrow">${escape(h.eyebrow)}</span><h1>${escape(h.title)}</h1><p class="lead">${escape(h.subtitle)}</p><div class="actions">${install}<a class="btn" href="/admin">${escape(t.admin.title)}</a><a class="btn" href="${siteUrl(locale, "/github-bot")}">${escape(h.learnMore)}</a></div>${rollout}</div>
 <div><div class="card legend"><h2>${escape(h.labelsHeading)}</h2><ul>${legend}</ul></div><p class="fine">${escape(h.labelsLead)} ${escape(h.labelsNote)}</p></div></div>
 <section><h2>${escape(h.stepsHeading)}</h2><div class="grid">${steps}</div></section>
 <section class="grid">
@@ -687,13 +687,17 @@ async function renderUi(request: Request, env: Env): Promise<Response> {
     );
   }
   if (path === "/login" && request.method === "GET") {
+    // The one-use state row stores only a fixed page name or a numeric installation.
+    const returnTo = url.searchParams.get("return_to");
     const installation =
-      url.searchParams.get("return_to") === "notifications"
-        ? "notifications"
+      returnTo === "notifications" || returnTo === "admin"
+        ? returnTo
         : url.searchParams.get("installation_id");
     if (
       !installation ||
-      (installation !== "notifications" && !/^\d{1,16}$/.test(installation)) ||
+      (installation !== "notifications" &&
+        installation !== "admin" &&
+        !/^\d{1,16}$/.test(installation)) ||
       !env.APP_CLIENT_ID
     )
       return new Response("Invalid installation", { status: 400 });
@@ -750,9 +754,366 @@ async function renderUi(request: Request, env: Env): Promise<Response> {
     return redirect(
       row.value === "notifications"
         ? "/notifications"
-        : `/setup?installation_id=${row.value}`,
+        : row.value === "admin"
+          ? "/admin"
+          : `/setup?installation_id=${row.value}`,
       cookieHeader("ghfind_bot_session", id, 3600),
     );
+  }
+  if (
+    path === "/admin" ||
+    path === "/admin/installations" ||
+    path === "/admin/repositories" ||
+    path === "/admin/tasks" ||
+    path === "/admin/activity" ||
+    path === "/admin/toggle" ||
+    path === "/admin/intent-preview" ||
+    path === "/admin/repo" ||
+    path === "/admin/backfill" ||
+    path.startsWith("/admin/cleanup")
+  ) {
+    const a = t.admin;
+    const dashboard = ["/admin", "/admin/installations", "/admin/repositories", "/admin/tasks", "/admin/activity"].includes(path);
+    view.admin = { path, locale, lang: url.searchParams.get("lang") === locale ? locale : undefined };
+    const current = await session(request, env);
+    if (!current) {
+      if (request.method !== "GET")
+        return new Response("Sign in required", { status: 403 });
+      return simple(
+        view,
+        a.title,
+        `<p>${escape(a.signInBody)}</p><a class="btn primary" href="/login?return_to=admin">${escape(a.signIn)}</a>`,
+      );
+    }
+    let form: URLSearchParams | undefined;
+    if (request.method === "POST" && !dashboard) {
+      if (request.headers.get("origin") !== url.origin)
+        return new Response("Invalid origin", { status: 403 });
+      // Worst case within parseSettingsForm's limits: 50 labels x 100 UTF-16
+      // units at 9 bytes each once percent-encoded (~46 KB) plus a 2000-unit
+      // prompt (~18 KB). Anything larger would be rejected anyway.
+      try {
+        // A preview permits 8,000 UTF-16 units of text: CJK form encoding
+        // can take 9 bytes per unit, plus title and CSRF overhead.
+        form = new URLSearchParams(await readTextBounded(request, path === "/admin/intent-preview" ? 80 * 1024 : 65536));
+      } catch {
+        form = undefined;
+      }
+      if (form && form.get("csrf") !== current.id)
+        return new Response("Invalid form", { status: 403 });
+    } else if (
+      request.method !== "GET" ||
+      path === "/admin/backfill" ||
+      path === "/admin/toggle" ||
+      path === "/admin/intent-preview" ||
+      path.startsWith("/admin/cleanup")
+    )
+      return new Response("Method not allowed", { status: 405 });
+    view.session = current.id;
+    const globalDashboard = path === "/admin" && !url.searchParams.has("installation_id");
+    const accountPages = url.searchParams.getAll("account_page");
+    if (globalDashboard && (accountPages.length > 1 || (accountPages[0] !== undefined && (!/^[1-9]\d{0,2}$/.test(accountPages[0]) || Number(accountPages[0]) > 250))))
+      return new Response("Invalid account page", { status: 400 });
+    const api = github(current.token, dashboard ? Date.now() + (globalDashboard ? 30_000 : 15_000) : undefined);
+    let installation = url.searchParams.get("installation_id");
+    if (installation !== null && !/^\d{1,16}$/.test(installation))
+      return new Response("Invalid installation", { status: 400 });
+    if (installation === null && !dashboard)
+      return new Response("Invalid installation", { status: 400 });
+    const installs = await userInstallations(api);
+    view.admin.installations = installs;
+    const selected = installation === null
+      ? installs[0]
+      : installs.find(item => String(item.id) === installation);
+    if (installation !== null && !selected)
+      return new Response("Not found", { status: 404 });
+    // Installation management is a page within the selected workspace, not a
+    // reset of its context. Direct entry can still offer every available account.
+    view.admin.installation = selected ? String(selected.id) : undefined;
+    view.admin.account = selected?.account;
+    try {
+      view.admin.repoPage = parseAdminFilters(url.searchParams).repoPage;
+      const listPage = path === "/admin/repositories";
+      const q = (url.searchParams.get(listPage ? "q" : "return_q") ?? "").trim();
+      const processing = url.searchParams.get(listPage ? "processing" : "return_processing") ?? "";
+      if (q.length > 100 || /[\x00-\x1f\x7f]/.test(q) || !["", "active", "paused"].includes(processing))
+        throw new Error("Invalid repository context");
+      if (url.searchParams.getAll("return_q").length > 1 || url.searchParams.getAll("return_processing").length > 1)
+        throw new Error("Invalid repository context");
+      view.admin.repositoryQuery = { q, processing };
+    } catch {
+      return new Response("Invalid filters", { status: 400 });
+    }
+    if (dashboard && (installation === null || path === "/admin/installations")) {
+      view.admin.path = "/admin/installations";
+      return html(view, ADMIN_MESSAGES[locale].installations, installationPage(view.admin,t,
+        env.APP_SLUG && env.ENABLED === "true" ? `https://github.com/apps/${encodeURIComponent(env.APP_SLUG)}/installations/new` : undefined));
+    }
+    installation = view.admin.installation ?? null;
+    if (!installation || !/^\d{1,16}$/.test(installation))
+      return new Response("Invalid installation", { status: 400 });
+    let repos: Map<number, string>;
+    try {
+      repos = await accessibleRepos(api, installation);
+    } catch (error) {
+      if (error instanceof ApiError && [403, 404].includes(error.status))
+        return new Response("Not found", { status: 404 });
+      throw error;
+    }
+    view.admin.installation = installation;
+    // The installation account remains usable even when it has no repositories.
+    view.admin.account = selected?.account ?? [...repos.values()][0]?.split("/")[0];
+    if (dashboard) {
+      try { parseAdminFilters(url.searchParams); }
+      catch { return new Response("Invalid filters", { status: 400 }); }
+      if (path === "/admin/repositories" && !["", "active", "paused"].includes(url.searchParams.get("processing") ?? ""))
+        return new Response("Invalid filters", { status: 400 });
+      let data: Awaited<ReturnType<typeof loadAdminData>>;
+      try { data = await loadAdminData(env, api, Number(installation), repos, url.searchParams); }
+      catch(error) {
+        if (error instanceof ApiError && error.status === 404 && !error.retry) return new Response("Not found", { status: 404 });
+        throw error;
+      }
+      view.admin.repoPage = data.scope.page;
+      const render = path === "/admin/repositories" ? repositoriesPage(view.admin,t,data,current.id,url)
+        : path === "/admin/tasks" ? tasksPage(view.admin,t,data,current.id,url)
+        : path === "/admin/activity" ? activityPage(view.admin,t,data,url)
+        : dashboardPage(view.admin,t,data,current.id);
+      const title = path === "/admin/repositories" ? ADMIN_MESSAGES[locale].repositories : path === "/admin/tasks" ? ADMIN_MESSAGES[locale].tasks : path === "/admin/activity" ? ADMIN_MESSAGES[locale].activity : ADMIN_MESSAGES[locale].overview;
+      return html(view,title,render);
+    }
+    const repository = url.searchParams.get("repository");
+    const fullName = repository && /^\d{1,16}$/.test(repository)
+      ? repos.get(Number(repository))
+      : undefined;
+    if (!fullName) return new Response("Not found", { status: 404 });
+    const target = adminLink(view.admin, "/admin/repo", { repository: Number(repository) });
+    const query = new URL(target, url).searchParams.toString();
+    const operationTab = path === "/admin/backfill" ? "backfill"
+      : path.startsWith("/admin/cleanup") ? "cleanup"
+      : path === "/admin/intent-preview" ? "preview" : "settings";
+    const backTarget = operationTab === "settings" ? target : `${target}&tab=${operationTab}`;
+    const invalid = (title = a.invalidTitle, body = a.invalidBody, status = 400) =>
+      withStatus(
+        simple(
+          view,
+          title,
+          `<p>${escape(body)}</p><a class="btn" href="${escape(backTarget)}">${escape(a.back)}</a>`,
+        ),
+        status,
+      );
+    const login = async () => {
+      const user = record(await api("/user"));
+      return typeof user.login === "string" && /^[A-Za-z0-9-]+$/.test(user.login)
+        ? user.login
+        : null;
+    };
+    if (request.method === "POST" && path === "/admin/toggle") {
+      if (!(await repoAdmin(api, fullName, Number(repository)))) return new Response("Repository admin required", { status: 403 });
+      if (!form || !["on", "off"].includes(form.get("enabled") ?? "")) return invalid();
+      const user = await login();
+      if (!user) return new Response("Invalid user", { status: 400 });
+      const previous = await getSettings(env, Number(repository), fullName);
+      const { backfillLimit: _limit, ...value } = previous;
+      const enabled = form.get("enabled") === "on";
+      value.issuesEnabled = enabled; value.prsEnabled = enabled;
+      await putSettings(env, Number(installation), Number(repository), fullName, value, user);
+      await audit(env, Number(repository), user, "web", "settings.update", { changed: ["issuesEnabled", "prsEnabled"] });
+      return redirect(adminLink(view.admin, "/admin/repositories"));
+    }
+    let previewResult: IntentPreviewResult | undefined;
+    let previewError: IntentPreviewError["code"] | undefined;
+    let previewStatus = 200;
+    let previewPermissions: Awaited<ReturnType<typeof repoPermissions>> | undefined;
+    if (request.method === "POST" && path === "/admin/intent-preview") {
+      previewPermissions = await repoPermissions(api, fullName, Number(repository));
+      if (!previewPermissions.admin) return new Response("Repository admin required", { status: 403 });
+      if (!form) return invalid();
+      try { previewResult = await runIntentPreview(env,api,Number(repository),fullName,form); }
+      catch(error) {
+        if (!(error instanceof IntentPreviewError)) throw error;
+        previewError = error.code; previewStatus = error.status;
+      }
+    }
+    if (request.method === "POST" && path === "/admin/backfill") {
+      if (!(await repoAdmin(api, fullName, Number(repository))))
+        return new Response("Repository admin required", { status: 403 });
+      let limit: number;
+      try {
+        if (!form) throw new Error("Invalid settings");
+        limit = parseBackfillLimit(form);
+      } catch {
+        return invalid(a.backfillInvalidTitle, a.backfillInvalid);
+      }
+      const busy = () => invalid(a.backfillBusyTitle, a.backfillBusy, 409);
+      const last = await lastBackfill(env, Number(repository));
+      if (last && (last.state === "pending" || last.state === "running"))
+        return busy();
+      const user = await login();
+      if (!user) return new Response("Invalid user", { status: 400 });
+      await putBackfillLimit(
+        env,
+        Number(installation),
+        Number(repository),
+        fullName,
+        limit,
+        user,
+      );
+      if (!(await putBackfill(env, Number(installation), Number(repository), fullName)))
+        return busy();
+      await audit(env, Number(repository), user, "web", "backfill", { limit });
+      await dispatch(env);
+      return redirect(`${target}&tab=backfill&backfill=queued`);
+    }
+    if (request.method === "POST" && path.startsWith("/admin/cleanup")) {
+      if (!(await repoAdmin(api, fullName, Number(repository))))
+        return new Response("Repository admin required", { status: 403 });
+      if (!form) return invalid();
+      const user = await login();
+      if (!user) return new Response("Invalid user", { status: 400 });
+      const done = () => redirect(`${target}&tab=cleanup#cleanup`);
+      if (path === "/admin/cleanup") {
+        let scope;
+        try {
+          scope = parseScopeForm(form);
+        } catch {
+          return invalid(a.cleanInvalidTitle, a.cleanInvalid);
+        }
+        const settings = await getSettings(env, Number(repository), fullName);
+        const created = await createCleanup(
+          env,
+          Number(installation),
+          Number(repository),
+          fullName,
+          scope,
+          user,
+          settings.issuesEnabled || settings.prsEnabled,
+        );
+        if (!created) return invalid(a.cleanBusyTitle, a.cleanBusy, 409);
+        await audit(env, Number(repository), user, "web", "cleanup.plan", {
+          id: created.cleanup.id,
+        });
+        await env.JOBS.send({ cleanup: created.cleanup.id });
+        return done();
+      }
+      const id = form.get("cleanup") ?? "";
+      if (!/^[0-9a-f-]{36}$/.test(id)) return invalid();
+      if (path === "/admin/cleanup/confirm") {
+        if (
+          (await confirmCleanup(
+            env,
+            Number(repository),
+            { id, requester: user },
+            user,
+          )) === "ok"
+        ) {
+          await audit(env, Number(repository), user, "web", "cleanup.confirm", { id });
+          await env.JOBS.send({ cleanup: id });
+        }
+        return done();
+      }
+      if (path === "/admin/cleanup/cancel") {
+        if (await cancelCleanup(env, Number(repository), id))
+          await audit(env, Number(repository), user, "web", "cleanup.cancel", { id });
+        return done();
+      }
+      return new Response("Not found", { status: 404 });
+    }
+    if (request.method === "POST" && path !== "/admin/intent-preview") {
+      if (!(await repoAdmin(api, fullName, Number(repository))))
+        return new Response("Repository admin required", { status: 403 });
+      if (!form) return invalid();
+      let value;
+      try {
+        value = parseSettingsForm(form);
+      } catch {
+        return invalid();
+      }
+      const user = await login();
+      if (!user) return new Response("Invalid user", { status: 400 });
+      const availableLabels = new Set((await repoLabels(api, fullName)).map((x) => x.name));
+      if (value.allowedLabels.some((name) => !availableLabels.has(name)))
+        return invalid(a.invalidTitle, a.labelsInvalid);
+      const previous = await getSettings(env, Number(repository), fullName);
+      const changed = (Object.keys(value) as (keyof typeof value)[]).filter(
+        (key) => JSON.stringify(value[key]) !== JSON.stringify(previous[key]),
+      );
+      await putSettings(
+        env,
+        Number(installation),
+        Number(repository),
+        fullName,
+        value,
+        user,
+      );
+      await audit(env, Number(repository), user, "web", "settings.update", { changed });
+      return redirect(`${target}&saved=1`);
+    }
+    const permissions = previewPermissions ?? await repoPermissions(api, fullName, Number(repository));
+    if (!permissions.write)
+      return withStatus(simple(view, a.title, `<p>${escape(a.writeRequired)}</p><a class="btn" href="${escape(adminLink(view.admin, "/admin/repositories"))}">${escape(a.allRepositories)}</a>`), 404);
+    const admin = permissions.admin;
+    const [settings, labels, last, cleanup, log] = await Promise.all([
+      getSettings(env, Number(repository), fullName),
+      repoLabels(api, fullName),
+      lastBackfill(env, Number(repository)),
+      latestCleanup(env, Number(repository)),
+      recentAudit(env, Number(repository), 20),
+    ]);
+    // Only a pending preview needs to know who is looking.
+    const viewer =
+      admin && cleanup?.state === "planned" ? await login() : null;
+    const backfillBusy = last?.state === "pending" || last?.state === "running";
+    const processingPaused = !settings.issuesEnabled && !settings.prsEnabled;
+    const allowed = new Set(settings.allowedLabels);
+    const present = new Set(labels.map((x) => x.name));
+    const items = [
+      ...labels.map((x) => ({ ...x, missing: false })),
+      ...settings.allowedLabels
+        .filter((name) => !present.has(name))
+        .map((name) => ({ name, color: "", description: "", missing: true })),
+    ]
+      .map(
+        (x) =>
+          `<li><label class="check"><input type="checkbox" name="allowed_labels" value="${escape(x.name)}"${allowed.has(x.name) ? " checked" : ""}><span class="swatch"${x.color ? ` style="background:#${x.color}"` : ""}></span><span class="grow"><strong>${escape(x.name)}</strong>${x.missing ? ` <span class="state-text" data-state="failed">${escape(a.missing)}</span>` : `<span class="result">${escape(x.description || a.noDescription)}</span>`}</span></label></li>`,
+      )
+      .join("");
+    const box = (name: string, on: boolean, text: string) =>
+      `<label class="check"><input type="checkbox" name="${name}" value="on"${on ? " checked" : ""}><span>${escape(text)}</span></label>`;
+    const notices = [
+      url.searchParams.get("saved") === "1"
+        ? `<p class="status" data-on>${escape(a.saved)}</p>`
+        : "",
+      admin ? "" : `<p class="notice">${escape(a.readOnly)}</p>`,
+
+    ].join("");
+    const backfillNotice =
+      url.searchParams.get("backfill") === "queued"
+        ? `<p class="status" data-on>${escape(a.backfillQueued)}</p>`
+        : "";
+    const d = ADMIN_MESSAGES[locale];
+    const selectedTab = path === "/admin/intent-preview" ? "preview" : url.searchParams.get("tab") ?? (url.searchParams.get("backfill") === "queued" ? "backfill" : "settings");
+    if (!["settings", "backfill", "cleanup", "activity", "preview"].includes(selectedTab)) return new Response("Invalid tab", { status: 400 });
+    const tabNames = { settings: d.settings, preview: d.preview, backfill: a.backfill, cleanup: a.cleanup, activity: a.activity };
+    const tabs = `<nav class="repo-tabs" aria-label="${escape(d.settings)}">${Object.entries(tabNames).map(([id,label])=>`<a href="${escape(adminLink(view.admin!,"/admin/repo",{repository:Number(repository),tab:id}))}"${selectedTab===id?' aria-current="page"':""}>${escape(label)}</a>`).join("")}</nav>`;
+    const settingsPanel = `<div class="repo-settings" id="settings"><form method="post" action="${escape(target)}"><input type="hidden" name="csrf" value="${current.id}"><fieldset class="stack"${admin ? "" : " disabled"}><div class="settings-flow">
+<section class="setting-section"><div class="setting-description"><h2>${escape(a.processing)}</h2><p>${escape(d.processingHint)}</p></div><div class="setting-controls">${box("issues_enabled", settings.issuesEnabled, a.issues)}${box("prs_enabled", settings.prsEnabled, a.prs)}</div></section>
+<section class="setting-section"><div class="setting-description"><h2>${escape(a.comments)}</h2><p>${escape(a.promptHint)}</p></div><div class="setting-controls">${llmConfigured(env)?"":`<p class="notice">${escape(a.llmMissing)}</p>`}${box("comments_enabled", settings.commentsEnabled, a.commentsEnabled)}<label class="field"><strong>${escape(a.prompt)}</strong><textarea name="comment_prompt" maxlength="2000" rows="5">\n${escape(settings.commentPrompt)}</textarea></label></div></section>
+<section class="setting-section"><div class="setting-description"><h2>${escape(a.triage)}</h2><p>${escape(a.labelsHint)}</p><a class="textlink" href="https://github.com/${escape(fullName)}/labels">${escape(a.editLabels)} ↗</a></div><div class="setting-controls">${triageConfigured(env)?"":`<p class="notice">${escape(d.previewNotConfigured)}</p>`}${box("triage_enabled", settings.triageEnabled, a.triageEnabled)}<fieldset><legend>${escape(a.labels)}</legend>${items ? `<ul class="labels">${items}</ul>` : `<p class="empty">${escape(a.noLabels)}</p>`}</fieldset></div></section>
+</div>${admin?`<div class="settings-save"><p>${escape(d.saveHint)}</p><button class="btn primary">${escape(a.save)}</button></div>`:""}</fieldset></form></div>`;
+    const backfillPanel = `<div class="repo-operation"><div class="operation-main">${backfillNotice}${processingPaused ? `<p class="notice">${escape(a.backfillPaused)}</p>` : ""}<form id="backfill" method="post" action="/admin/backfill?${escape(query)}"><input type="hidden" name="csrf" value="${current.id}"><fieldset class="stack"${admin ? "" : " disabled"}><div><h2>${escape(a.backfill)}</h2><p class="result">${escape(a.backfillHint)}</p><p class="result">${escape(a.backfillStatusHint)}</p><label class="field" style="margin-top:12px"><strong>${escape(a.backfillLimit)}</strong><input type="number" name="backfill_limit" min="1" max="100" step="1" required value="${Math.min(Math.max(settings.backfillLimit, 1), 100)}"></label></div><p id="backfill-status" class="result">${escape(a.backfillLast)} ${last ? `<span class="state-text" data-state="${escape(last.state)}">${escape(t.setup.states[last.state as keyof typeof t.setup.states] ?? last.state)}</span> <time datetime="${new Date(last.updated).toISOString()}">${utc(last.updated)} UTC</time>${last.result ? ` · ${escape(last.result)}` : ""}` : escape(a.backfillNever)}</p>${admin ? `<p><button class="btn"${backfillBusy || processingPaused ? " disabled" : ""}>${escape(a.backfillButton)}</button></p>` : ""}</fieldset></form><div class="actions"><a class="btn" href="${escape(target)}&amp;tab=backfill">${escape(a.cleanRefresh)}</a><a class="textlink" href="${escape(adminLink(view.admin!,"/admin/tasks"))}">${escape(d.tasks)}</a></div></div><aside class="operation-help"><h2>${escape(a.backfill)}</h2><p>${escape(d.backfillHelp)}</p></aside></div>`;
+    const cleanupPanel = `<div class="repo-operation">${cleanupCard(a, query, current.id, admin, cleanup, viewer)}<aside class="operation-help"><h2>${escape(a.cleanup)}</h2><p>${escape(d.cleanupHelp)}</p></aside></div>`;
+    const activityPanel = `<div class="repo-operation">${activityCard(a,log)}<aside class="operation-help"><h2>${escape(d.activity)}</h2><p>${escape(d.activityLead)}</p><div class="actions"><a class="btn" href="${escape(adminLink(view.admin!,"/admin/activity"))}">${escape(d.viewAll)}</a></div></aside></div>`;
+    const previewErrors = { invalid_input: d.previewInvalid, no_candidates: d.previewNoCandidates, not_configured: d.previewNotConfigured, rate_limited: d.previewRateLimited, classifier_unavailable: d.previewUnavailable };
+    const previewTitle = previewResult?.title ?? (form?.get("preview_title") ?? "").slice(0,256);
+    const previewBody = previewResult?.body ?? (form?.get("preview_body") ?? "").slice(0,8000);
+    const previewKind = previewResult?.kind ?? (form?.get("preview_kind") === "pull_request" ? "pull_request" : "issue");
+    const classification = previewResult?.classification;
+    const previewOutput = previewError ? `<p class="notice" role="alert">${escape(previewErrors[previewError])}</p>` : classification ? `<div class="operation-main"><h2>${escape(d.previewSelected)}</h2><p>${classification.labels.length?classification.labels.map(name=>`<span class="state-text" data-state="done"><bdi>${escape(name)}</bdi></span>`).join(" "):escape(d.previewNoMatch)}</p><p class="result">${escape(d.previewCandidates)}: ${previewResult!.candidateCount} · ${escape(classification.provider)}${classification.model?` · <bdi>${escape(classification.model)}</bdi>`:""}${classification.threshold!==undefined?` · ${escape(d.previewThreshold)}: ${Math.round(classification.threshold*100)}%`:""}</p>${classification.probabilities?.length?`<div class="probabilities">${classification.probabilities.map(x=>`<div class="probability"><bdi>${escape(x.name)}</bdi><span dir="ltr">${(x.probability*100).toFixed(1)}%</span><meter min="0" max="1" value="${x.probability}" aria-label="${escape(x.name)}"></meter></div>`).join("")}</div>`:""}</div>` : "";
+    const previewPanel = `<div class="repo-operation"><div class="stack"><div class="operation-main"><h2>${escape(d.preview)}</h2><p class="result">${escape(d.previewLead)}</p><form class="preview-form" method="post" action="/admin/intent-preview?${escape(query)}"><input type="hidden" name="csrf" value="${current.id}"><fieldset class="stack"${admin?"":" disabled"}><label class="field"><strong>${escape(d.previewKind)}</strong><select name="preview_kind"><option value="issue"${previewKind!=="pull_request"?" selected":""}>${escape(d.issue)}</option><option value="pull_request"${previewKind==="pull_request"?" selected":""}>${escape(d.pullRequest)}</option></select></label><label class="field"><strong>${escape(d.previewTitle)}</strong><input type="text" name="preview_title" required maxlength="256" value="${escape(previewTitle)}"></label><label class="field"><strong>${escape(d.previewBody)}</strong><textarea name="preview_body" maxlength="8000" rows="5">${escape(previewBody)}</textarea></label>${admin?`<button class="btn primary">${escape(d.runPreview)}</button>`:""}</fieldset></form><p class="result">${escape(d.previewOnly)}</p></div>${previewOutput}</div><aside class="operation-help"><h2>${escape(d.preview)}</h2><p>${escape(d.previewDisclosure)}</p>${triageConfigured(env)?"":`<p class="notice">${escape(d.previewNotConfigured)}</p>`}<p class="result">${escape(d.previewCandidates)}: ${settings.allowedLabels.filter(name=>present.has(name)).length}</p><a class="textlink" href="${escape(adminLink(view.admin!,"/admin/repo",{repository:Number(repository),tab:"settings"}))}">${escape(d.settings)}</a></aside></div>`;
+    const panels = { settings: settingsPanel, backfill: backfillPanel, cleanup: cleanupPanel, activity: activityPanel, preview: previewPanel };
+    return withStatus(html(view,fullName,`<nav class="crumbs"><a class="textlink" href="${escape(adminLink(view.admin!,"/admin/repositories"))}">${escape(d.repositories)}</a><span>${escape(admin?d.admin:d.readOnly)}</span></nav>${pageHead(fullName,selectedTab==="settings"?d.settingsHint:tabNames[selectedTab as keyof typeof tabNames])}${notices?`<div class="notice-stack">${notices}</div>`:""}${tabs}${panels[selectedTab as keyof typeof panels]}`),previewStatus);
+
   }
   if (path === "/setup" || path === "/retry") {
     const s = t.setup;
