@@ -844,6 +844,14 @@ async function renderUi(request: Request, env: Env): Promise<Response> {
     } catch {
       return new Response("Invalid filters", { status: 400 });
     }
+    if (globalDashboard) {
+      if (Number(accountPages[0] ?? 1) > Math.max(1, Math.ceil(installs.length / GLOBAL_ACCOUNT_PAGE_SIZE)))
+        return new Response("Invalid account page", { status: 400 });
+      view.admin.global = true;
+      const data = await loadGlobalAdminData(env, api, installs, (id, page) => globalRepositoryScope(api, id, page), url.searchParams);
+      return html(view, ADMIN_MESSAGES[locale].overview, globalDashboardPage(view.admin, t, data, current.id,
+        env.APP_SLUG && env.ENABLED === "true" ? `https://github.com/apps/${encodeURIComponent(env.APP_SLUG)}/installations/new` : undefined));
+    }
     if (dashboard && (installation === null || path === "/admin/installations")) {
       view.admin.path = "/admin/installations";
       return html(view, ADMIN_MESSAGES[locale].installations, installationPage(view.admin,t,

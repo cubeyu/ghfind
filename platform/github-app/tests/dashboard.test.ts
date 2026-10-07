@@ -38,6 +38,40 @@ const post=(path:string,form:URLSearchParams,source=origin)=>ui(new Request(orig
 const query="installation_id=10&repository=100";
 
 describe("SaaS dashboard navigation and operations",()=>{
+ it("renders a real global dashboard and scopes account drill-downs to each installation",async()=>{
+  installations.push({id:20,account:{login:"other"}});
+  const now=Date.now();
+  await testEnv.DB.batch([
+   testEnv.DB.prepare("INSERT INTO jobs(id,installation,repository,full_name,pr,kind,state,created,due,updated) VALUES('global-one',10,100,?,10,'label','pending',?,?,?)").bind(repo,now,now,now),
+   testEnv.DB.prepare("INSERT INTO jobs(id,installation,repository,full_name,pr,kind,state,created,due,updated) VALUES('global-other',20,200,'other/tools',2,'label','failed',?,?,?)").bind(now,now,now),
+  ]);
+  const response=await get('/admin?lang=zh');expect(response.status).toBe(200);const html=await response.text();
+  expect(html).toContain('class="kpi-strip"');expect(html).toContain('global-one');expect(html).toContain('global-other');
+  expect(html).toContain('/admin/repo?installation_id=20&amp;lang=zh&amp;repository=200');
+  expect(html).toContain('/retry?installation_id=20&amp;lang=zh');
+  expect(html).toContain('/admin/tasks?installation_id=20&amp;lang=zh&amp;status=failed');
+  const other=await(await get('/admin?installation_id=20&lang=zh')).text();
+  expect(other).toContain('global-other');expect(other).not.toContain('global-one');
+  expect(calls.filter(path=>path==='/user/installations/20/repositories')).toHaveLength(2);
+ });
+ it("rejects malformed global pagination before repository reads and renders zero accounts without invented metrics",async()=>{
+  for(const suffix of ['account_page=0','account_page=1&account_page=2','account_page=251'])expect((await get('/admin?'+suffix)).status).toBe(400);
+  expect(calls).toEqual([]);
+  expect((await get('/admin?account_page=2')).status).toBe(400);expect(calls).toEqual(['/user/installations']);
+  installations=[];const html=await(await get('/admin')).text();
+  expect(html).toContain('class="admin-empty"');expect(html).not.toContain('class="kpi-strip"');expect(html).toContain('https://github.com/settings/installations');
+ });
+ it("keeps installation management inside the selected workspace and every sidebar destination usable",async()=>{
+  const html=await(await get("/admin/installations?installation_id=10&lang=zh")).text();
+  expect(html).toContain('href="/admin?lang=zh"');
+  const global=await get('/admin?lang=zh');expect(global.status).toBe(200);expect(await global.text()).toContain('class="kpi-strip"');
+  for(const route of ["/admin/repositories","/admin/tasks","/admin/activity"]){
+   expect(html).toContain(`href="${route}?installation_id=10&amp;lang=zh"`);
+   const next=await get(`${route}?installation_id=10&lang=zh`);
+   expect(next.status).toBe(200);expect(await next.text()).toContain('class="scope-note"');
+  }
+  expect(html).not.toContain('id="installation-context"');
+ });
  it("gives direct installation entry a valid account context without needing repository data",async()=>{
   repos=[];
   const html=await(await get("/admin/installations?lang=ar")).text();
