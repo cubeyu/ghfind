@@ -1,9 +1,11 @@
 import { sendAuthorEmails } from "./author-email";
+import { dispatchCleanups, runCleanup } from "./cleanup";
 import { positive, readText, record, repositoryName } from "./github";
 import { admitMention, allowed, dispatch, putJob, runJob } from "./jobs";
 import { getSettings } from "./settings";
 import { ui } from "./ui";
 
+type Message = { id: string } | { cleanup: string };
 export async function verifySignature(
   body: string,
   signature: string | null,
@@ -167,10 +169,12 @@ export default {
       });
     }
   },
-  async queue(batch: MessageBatch<{ id: string }>, env: Env) {
+  async queue(batch: MessageBatch<Message>, env: Env) {
     for (const message of batch.messages) {
       try {
-        await runJob(env, message.body.id);
+        if ("cleanup" in message.body)
+          await runCleanup(env, message.body.cleanup);
+        else await runJob(env, message.body.id);
         message.ack();
       } catch {
         message.retry({ delaySeconds: 60 });
@@ -180,5 +184,6 @@ export default {
   async scheduled(_controller: ScheduledController, env: Env) {
     await dispatch(env);
     await sendAuthorEmails(env);
+    await dispatchCleanups(env);
   },
-} satisfies ExportedHandler<Env, { id: string }>;
+} satisfies ExportedHandler<Env, Message>;
