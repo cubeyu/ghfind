@@ -153,6 +153,14 @@ pnpm cli:build
 The standalone CLI is built as `./bin/ghfind`. The separately published npm SDK
 also provides a `ghfind` executable; it is not installed by the root workspace.
 
+`ghfind bot` uses a personal `ghf_` token from
+[Integrations](https://ghfind.com/integrations). Explicitly select **Manage the
+ghfind Review bot** when creating it, then set `GHFIND_API_KEY` or `--api-key`.
+Existing tokens remain scan-only. All bot commands require this permission;
+repository reads also require write access and changes require admin access.
+Same-owner repository renames and App reinstalls preserve bot settings; an
+owner transfer resets AI opt-ins, allowed intent labels and custom prompts.
+
 The default service host is `https://ghfind.com`. Override it for local dev:
 
 ```bash

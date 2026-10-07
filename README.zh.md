@@ -164,6 +164,14 @@ pnpm cli:build
 独立 CLI 构建为 `./bin/ghfind`。单独发布的 npm SDK 也提供 `ghfind` 可执行命令，
 但根工作区不会安装该 SDK。
 
+`ghfind bot` 使用在 [Integrations](https://ghfind.com/integrations) 创建的个人
+`ghf_` Token。创建时必须显式勾选 **Manage the ghfind Review bot（管理 ghfind Review bot）**，
+并设置 `GHFIND_API_KEY` 或 `--api-key`。存量 Token 仍仅能扫描。所有 bot 命令都需要
+此权限；仓库查看还需 write 权限，修改需 admin 权限。
+同一 owner 改名或重装 App 保留 bot 设置；仓库转移会重置 AI 开关、
+勾选的意图标签和自定义评论提示词，新 owner 需重新主动开启。
+
+
 默认服务端域名是 `https://ghfind.com`。本地联调可以覆盖:
 
 ```bash
