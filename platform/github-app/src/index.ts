@@ -1,3 +1,4 @@
+import { api } from "./api";
 import { sendAuthorEmails } from "./author-email";
 import { dispatchCleanups, runCleanup } from "./cleanup";
 import { positive, readText, record, repositoryName } from "./github";
@@ -159,6 +160,7 @@ export default {
           service: "ghfind-github-app",
           enabled: env.ENABLED === "true",
         });
+      if (path.startsWith("/api/")) return await api(request, env);
       if (path === "/avatar.png" || path === "/fonts/dm-sans-variable.ttf")
         return env.ASSETS.fetch(request);
       return await ui(request, env);
