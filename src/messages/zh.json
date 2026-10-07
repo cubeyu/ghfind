@@ -1407,20 +1407,147 @@
     "slotOpen": "虚位以待"
   },
   "githubBot": {
-    "metaTitle": "ghfind Review — 按作者评分给 issue 和 PR 打标签的 GitHub App",
-    "metaDescription": "安装 ghfind Review GitHub App，按作者的公开 ghfind 评分，为每条新 issue 和 pull request 自动添加彩色等级标签。",
+    "metaTitle": "ghfind Review | Issue 和 PR 分类与管理 Bot",
+    "metaDescription": "通过 ghfind Review Bot 后台或 CLI 管理作者评分标签、可选内容语义打标、建议预览、手动回填和 Bot 清理。",
     "topline": {
       "section": "集成",
       "current": "GitHub Bot"
     },
     "hero": {
-      "eyebrow": "GitHub App · 免费",
-      "title": "按作者评分为新 Issue 和 PR 自动添加标签",
-      "subtitle": "根据 Issue 和 PR 提出者的 ghfind 评分，为其添加 review 建议标签。",
+      "eyebrow": "ghfind Review · GitHub App",
+      "title": "Issue 和 PR 分类，\n由你掌控",
+      "subtitle": "作者评分、内容语义打标与仓库自动化，统一在 Bot 后台管理。",
+      "admin": "打开 Bot 后台",
       "install": "在 GitHub 安装",
-      "status": "打开状态页",
+      "status": "Bot 主页",
       "note": "以 ghfind-review[bot] 身份运行。只打标签，不评论、不关闭、不拦截任何提交。"
     },
+    "console": {
+      "heading": "你的 Bot 工作台",
+      "note": "使用 GitHub 登录，查看你有权访问的安装账号和仓库。",
+      "items": {
+        "overview": {
+          "title": "全局概览 Dashboard",
+          "body": "汇总你有权访问的多个 GitHub 安装账号。"
+        },
+        "repositories": {
+          "title": "仓库管理",
+          "body": "配置打标规则，暂停或恢复仓库处理。"
+        },
+        "tasks": {
+          "title": "任务队列",
+          "body": "查看回填进度，重试失败的任务。"
+        },
+        "activity": {
+          "title": "活动记录",
+          "body": "追踪配置变更与 Bot 清理记录。"
+        }
+      },
+      "preview": "Bot 后台界面 · 本地演示数据",
+      "screenshotAlt": "Bot 全局概览界面，包含安装账号、仓库状态、任务与最近活动。"
+    },
+    "classification": {
+      "heading": "两种标签，各自回答不同的问题",
+      "lead": "作者的公开画像与提交内容的主题，分别判断。",
+      "score": {
+        "mode": "作者公开画像",
+        "title": "作者评分标签",
+        "body": "新建 Issue 或 PR 后，Bot 查询作者的公开 ghfind 评分并添加 review: 分段标签。它描述作者的公开画像，不代表这次提交的质量。",
+        "example": "包含五个分段。暂时拿不到评分时，明确使用 no-score 标签。"
+      },
+      "intent": {
+        "mode": "可选功能 · 默认关闭",
+        "title": "内容语义打标",
+        "body": "将 Issue 或 PR 的标题、正文与管理员选择的现有 label description 比较。开启后，分类器最多添加三个匹配标签，不创建或重命名标签。",
+        "example": "需要已配置分类服务。先在后台试跑打标建议，再决定是否启用。AI 分类与作者评分独立，结果可能需要人工修正。"
+      }
+    },
+    "operations": {
+      "heading": "先看建议，再决定如何执行",
+      "lead": "按仓库分别控制，操作变化有记录可查。",
+      "items": {
+        "preview": {
+          "title": "试跑打标建议",
+          "body": "用 Issue 或 PR 样本对比已保存的标签定义。预览不修改 GitHub，也不保存样本文本；需要已配置分类服务。"
+        },
+        "backfill": {
+          "title": "手动回填历史提交",
+          "body": "由你主动扫描最近 1–100 个开放 Issue 和 PR。安装时只初始化评分标签，不会自动触发历史回填。"
+        },
+        "cleanup": {
+          "title": "预览并撤回 Bot 变更",
+          "body": "先查看可移除的内容，再确认执行。只清理能归属于 Bot 的变更，保留人工重新添加和归属不明的标签。"
+        }
+      }
+    },
+    "cli": {
+      "heading": "同样的控制，也能在终端完成",
+      "body": "Go、JavaScript 和 Python CLI 支持查看状态、暂停、恢复、回填、重试和清理。Token 需显式授予 Bot 权限，同时仍需具备对应仓库的访问权限。",
+      "link": "CLI 与 API 使用指南",
+      "example": "命令示例 · 请替换 owner/repo",
+      "note": "cleanup 命令只预览移除范围，实际执行需要另行确认。"
+    },
+    "reference": {
+      "heading": "查看作者评分标签与 GitHub 搜索条件"
+    },
+    "labels": {
+      "heading": "五个作者评分分段",
+      "lead": "安装时补齐缺失的评分标签，保留已有的自定义颜色和描述。",
+      "items": {
+        "low": {
+          "range": "0 – 39",
+          "desc": "公开画像信号较少。"
+        },
+        "medium": {
+          "range": "40 – 69",
+          "desc": "公开画像信号处于中间分段。"
+        },
+        "high": {
+          "range": "70 – 89",
+          "desc": "公开画像信号较强。"
+        },
+        "top": {
+          "range": "90 – 100",
+          "desc": "ghfind 指数的最高分段。"
+        },
+        "noScore": {
+          "range": "无评分",
+          "desc": "暂时不可用，不等于零分。临时失败会在 20 分钟和 60 分钟后重试。"
+        }
+      }
+    },
+    "queues": {
+      "heading": "在 GitHub 中筛选",
+      "lead": "粘贴到仓库的 Issues 搜索框。将 is:issue 替换为 is:pr，可查找 Pull Request。",
+      "items": {
+        "high": "高分段",
+        "top": "最高分段",
+        "low": "低分段",
+        "noScore": "暂无评分"
+      }
+    },
+    "notes": {
+      "heading": "安装、数据与控制",
+      "install": {
+        "heading": "从选定的仓库开始",
+        "body": "安装 GitHub App 并授予 Issues 和 Pull requests 读写权限，无需在仓库添加 workflow、PAT 或 secret。组织仓库可能需要 owner 批准。"
+      },
+      "privacy": {
+        "heading": "了解处理哪些数据",
+        "body": "评分使用作者的公开画像。可选语义分类会将标题、正文及选定标签的描述发送给已配置的 AI 服务。评论默认关闭；开启后包含开场白与作者评分摘要，不是代码评审。",
+        "link": "阅读隐私说明"
+      },
+      "stop": {
+        "heading": "随时暂停或移除",
+        "body": "在后台按仓库暂停处理，或在 GitHub 设置中移除 App。已有标签会保留；需要撤回时，可另行预览并清理符合条件的 Bot 变更。"
+      },
+      "rescore": {
+        "heading": "请求重新评分",
+        "body": "自动重试结束后，作者或仓库管理员可以在该 issue 下评论 @ghfind-review 重新评分。"
+      }
+    },
+    "disclaimer": "评分反映的是作者的公开 GitHub profile，不代表这次提交的质量。新贡献者可能只是公开记录较少。",
+    "source": "源代码与自部署指南",
     "preview": {
       "label": "带 review 标签的 issue 列表示例",
       "heading": "Issue 上的效果示例",
@@ -1428,32 +1555,6 @@
         "top": "解析嵌套配置时崩溃",
         "medium": "设置页支持深色模式",
         "noScore": "README 有错别字"
-      }
-    },
-    "labels": {
-      "heading": "五个标签，一眼分层",
-      "lead": "自动补齐缺失标签，颜色和描述可自定义。",
-      "items": {
-        "low": {
-          "range": "0 – 39",
-          "desc": "公开信号较少，建议先核实来源。"
-        },
-        "medium": {
-          "range": "40 – 69",
-          "desc": "常见的贡献者画像。"
-        },
-        "high": {
-          "range": "70 – 89",
-          "desc": "公开 profile 信号较强。"
-        },
-        "top": {
-          "range": "90 – 100",
-          "desc": "高价值开发者。"
-        },
-        "noScore": {
-          "range": "无评分",
-          "desc": "暂时拿不到分数，不等于零分。20 分钟和 60 分钟后会自动重试。"
-        }
       }
     },
     "steps": {
@@ -1472,34 +1573,7 @@
           "body": "安装时也会给现有 Open issue 和 PR 的前几页打标。编辑或重新打开不会重新评分。"
         }
       }
-    },
-    "queues": {
-      "heading": "按照 review 标签筛选",
-      "lead": "把筛选条件粘贴到仓库的 Issues 搜索框。",
-      "items": {
-        "high": "高分段 issue",
-        "top": "最高分段 issue",
-        "low": "需要核实来源的低分段 issue",
-        "noScore": "无评分，需要补充背景"
-      }
-    },
-    "notes": {
-      "rescore": {
-        "heading": "请求重新评分",
-        "body": "自动重试结束后，作者或仓库管理员可以在该 issue 下评论 @ghfind-review 重新评分。"
-      },
-      "privacy": {
-        "heading": "会接触哪些数据",
-        "body": "不读源码，不读 issue 正文。只保留安装、仓库、issue 编号、评分和任务状态；已完成任务 30 天后清理。有公开邮箱的作者每 72 小时最多收到一封评分邮件，可一键退订。",
-        "link": "隐私说明"
-      },
-      "stop": {
-        "heading": "随时停用",
-        "body": "在 GitHub 设置中移除仓库、暂停或卸载 App 即可。已有标签会保留。"
-      }
-    },
-    "disclaimer": "评分反映的是作者的公开 GitHub profile，不代表这次提交的质量。新贡献者可能只是公开记录较少。",
-    "source": "源代码与自部署指南"
+    }
   },
   "integrations": {
     "eyebrow": "面向开发者与 Agent",
