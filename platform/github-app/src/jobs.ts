@@ -56,7 +56,7 @@ export async function putJob(
     Partial<Pick<Job, "repository" | "full_name" | "pr" | "due" | "page">>,
 ) {
   const now = Date.now();
-  await env.DB.prepare(
+  const { meta } = await env.DB.prepare(
     "INSERT OR IGNORE INTO jobs(id,installation,repository,full_name,pr,kind,created,due,page,updated) VALUES(?,?,?,?,?,?,?,?,?,?)",
   )
     .bind(
@@ -72,6 +72,7 @@ export async function putJob(
       now,
     )
     .run();
+  return meta.changes > 0;
 }
 // Two automatic attempts, 20 and 60 minutes after the first transient no-score.
 // Nothing is scheduled after that; the author or an admin mentions the bot.
@@ -174,31 +175,49 @@ export async function admitMention(
     pr: number,
   });
 }
-function suppressesScoreEmail(id: string) {
-  return id.startsWith("open-pr-") || id.includes("-openpr-");
+export const isBackfill = (id: string) => id.startsWith("backfill-");
+// Pending or running backfill rows for a repository, from any installation.
+const ACTIVE_BACKFILL =
+  "SELECT 1 FROM jobs WHERE repository=? AND kind='initialize' AND id LIKE 'backfill-%' AND state IN ('pending','running')";
+// Admits an admin-triggered backfill unless one is already active for the
+// repository; one statement, so concurrent submits cannot both pass.
+export async function putBackfill(
+  env: Env,
+  installation: number,
+  repository: number,
+  fullName: string,
+): Promise<boolean> {
+  const now = Date.now();
+  const row = await env.DB.prepare(
+    `INSERT INTO jobs(id,installation,repository,full_name,kind,created,due,page,updated)
+     SELECT ?,?,?,?,'initialize',?,?,1,? WHERE NOT EXISTS (${ACTIVE_BACKFILL}) RETURNING id`,
+  )
+    .bind(
+      `backfill-${installation}-${repository}-${now}`,
+      installation,
+      repository,
+      fullName,
+      now,
+      now,
+      now,
+      repository,
+    )
+    .first();
+  return row !== null;
 }
-// One page of existing open pull requests per repository. INSERT OR IGNORE
-// keeps this to a single pass. Those jobs do not send score email.
-async function ensurePullRequestBackfill(env: Env) {
-  const { results } = await env.DB.prepare(
-    `SELECT installation, repository, MAX(full_name) AS full_name
-     FROM jobs
-     WHERE repository IS NOT NULL AND full_name IS NOT NULL
-     GROUP BY installation, repository`,
-  ).all<{ installation: number; repository: number; full_name: string }>();
-  for (const row of results)
-    await putJob(env, {
-      id: `pr-backfill-${row.installation}-${row.repository}`,
-      installation: row.installation,
-      kind: "initialize",
-      repository: row.repository,
-      full_name: row.full_name,
-      page: 3,
-    });
+export async function lastBackfill(env: Env, repository: number) {
+  return env.DB.prepare(
+    "SELECT state,result,created,updated FROM jobs WHERE repository=? AND kind='initialize' AND id LIKE 'backfill-%' ORDER BY created DESC LIMIT 1",
+  )
+    .bind(repository)
+    .first<Pick<Job, "state" | "result" | "created" | "updated">>();
+}
+// Backfilled items (open-, open-pr-) are old; mailing their authors would surprise them.
+function suppressesScoreEmail(id: string) {
+  return id.startsWith("open-") || id.includes("-openpr-");
 }
 export async function dispatch(env: Env) {
   if (env.ENABLED !== "true") return;
-  await ensurePullRequestBackfill(env);
   const now = Date.now();
   // SQL is the durable outbox: queue-send failures are recovered by cron.
   const { results } = await env.DB.prepare(
@@ -274,6 +293,12 @@ async function processJob(env: Env, job: Job) {
     return;
   }
   if (!job.repository) throw new Error("Missing repository");
+  // Rows from the retired multi-page backfill (issue page 2, PR page 3 and
+  // pr-backfill-*) already initialized labels; finish them without API calls.
+  if (job.kind === "initialize" && job.page > 1) {
+    await finish(env, job, "done", "Legacy backfill step retired");
+    return;
+  }
   // Repository-scoped token issuance rechecks current installation membership.
   const api = github(
     await installationToken(env, job.installation, job.repository, deadline),
@@ -294,63 +319,44 @@ async function processJob(env: Env, job: Job) {
     .bind(fullName, job.id)
     .run();
   if (job.kind === "initialize") {
-    if (!(job.page > 1)) await initializeLabels(api, fullName);
-    if (job.page === 3) {
-      const list = await api(
-        `/repos/${fullName}/pulls?state=open&per_page=100&page=1`,
-      );
-      if (!Array.isArray(list)) throw new Error("Invalid pull request list");
-      for (const value of list) {
-        const issue = record(value);
-        if (issue.state !== "open") continue;
-        const number = positive(issue.number);
-        await putJob(env, {
-          id: `open-pr-${job.installation}-${job.repository}-${number}`,
-          installation: job.installation,
-          kind: "label",
-          repository: job.repository,
-          full_name: fullName,
-          pr: number,
-        });
-      }
-      await finish(env, job, "done", "Open pull requests queued");
+    await initializeLabels(api, fullName);
+    // Install, repository-added and permission events only set up labels.
+    // Existing items are queued only by an admin's backfill from /admin/repo.
+    if (!isBackfill(job.id)) {
+      await finish(env, job, "done", "Labels initialized");
       return;
     }
-    const page = job.page;
-    for (;;) {
-      if (page < 1 || page > 2) break;
+    const settings = await getSettings(env, job.repository, fullName);
+    const limit = Math.min(Math.max(Math.trunc(settings.backfillLimit), 1), 100);
+    let queued = 0;
+    // One page of the newest open items; this endpoint returns issues and PRs.
+    if (settings.issuesEnabled || settings.prsEnabled) {
       const list = await api(
-        `/repos/${fullName}/issues?state=open&per_page=100&page=${page}`,
+        `/repos/${fullName}/issues?state=open&sort=created&direction=desc&per_page=${limit}`,
       );
       if (!Array.isArray(list)) throw new Error("Invalid issue list");
       for (const value of list) {
         const issue = record(value);
-        if (issue.state !== "open" || issue.pull_request) continue;
+        if (issue.state !== "open") continue;
+        const pull = Boolean(issue.pull_request);
+        if (pull ? !settings.prsEnabled : !settings.issuesEnabled) continue;
         const number = positive(issue.number);
-        await putJob(env, {
-          id: `open-${job.installation}-${job.repository}-${number}`,
+        // Backfill jobs (open-, open-pr-) send no score email or comment. Each
+        // admin run processes its items again, so a run after turning on intent
+        // labels reaches items an earlier run already scored.
+        const run = job.id.slice(job.id.lastIndexOf("-") + 1);
+        const added = await putJob(env, {
+          id: `${pull ? "open-pr" : "open"}-${job.installation}-${job.repository}-${number}-r${run}`,
           installation: job.installation,
           kind: "label",
           repository: job.repository,
           full_name: fullName,
           pr: number,
         });
+        if (added) queued++;
       }
-      if (list.length === 100 && page < 2) {
-        await env.DB.prepare(
-          "UPDATE jobs SET page=?,state='pending',lease=0,due=?,updated=? WHERE id=?",
-        )
-          .bind(page + 1, Date.now(), Date.now(), job.id)
-          .run();
-        return;
-      }
-      break;
     }
-    await env.DB.prepare(
-      "UPDATE jobs SET page=3,state='pending',lease=0,due=?,updated=? WHERE id=?",
-    )
-      .bind(Date.now(), Date.now(), job.id)
-      .run();
+    await finish(env, job, "done", `Queued ${queued} open issues and pull requests`);
     return;
   }
   const pr = record(await api(`/repos/${fullName}/issues/${job.pr}`));
