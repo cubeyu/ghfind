@@ -1400,20 +1400,147 @@
     "slotOpen": "Your logo here"
   },
   "githubBot": {
-    "metaTitle": "ghfind Review — GitHub App that labels issues and PRs by author score",
-    "metaDescription": "Install the ghfind Review GitHub App to add a colour-coded review label to every new issue and pull request, based on the author's public ghfind score.",
+    "metaTitle": "ghfind Review | GitHub Bot for Issue and PR triage",
+    "metaDescription": "Manage author-score labels, optional content classification, previews, backfills and cleanup from the ghfind Review Bot console or CLI.",
     "topline": {
       "section": "Integrations",
       "current": "GitHub Bot"
     },
     "hero": {
-      "eyebrow": "GitHub App · Free",
-      "title": "Triage issues and PRs by who opened them",
-      "subtitle": "ghfind Review adds a colour-coded review: label to every new issue and pull request, based on the author's public ghfind score. No workflow, no token, no secret to configure.",
+      "eyebrow": "ghfind Review · GitHub App",
+      "title": "Issue and PR triage,\nunder your control.",
+      "subtitle": "Label Issues and PRs by author score or content. Control automation, previews and cleanup from one Bot console.",
+      "admin": "Open Bot console",
       "install": "Install on GitHub",
-      "status": "Open status page",
+      "status": "Bot home",
       "note": "Runs as ghfind-review[bot]. It only adds labels — it never comments on, closes or blocks a submission."
     },
+    "console": {
+      "heading": "Your Bot workspace",
+      "note": "Sign in with GitHub. The console shows installations and repositories you can access.",
+      "items": {
+        "overview": {
+          "title": "Dashboard",
+          "body": "An overview across your GitHub installations."
+        },
+        "repositories": {
+          "title": "Repositories",
+          "body": "Configure labels and pause or resume processing."
+        },
+        "tasks": {
+          "title": "Tasks",
+          "body": "Follow backfills and retry failed jobs."
+        },
+        "activity": {
+          "title": "Activity",
+          "body": "Review configuration changes and cleanup history."
+        }
+      },
+      "preview": "Bot console · Local demo data",
+      "screenshotAlt": "Bot Dashboard showing installation overview, repository status, tasks and recent activity."
+    },
+    "classification": {
+      "heading": "Two kinds of labels. Two different signals.",
+      "lead": "Keep author-profile context separate from the topic of a contribution.",
+      "score": {
+        "mode": "Author-profile context",
+        "title": "Author-score labels",
+        "body": "For new Issues and PRs, the Bot looks up the author’s public ghfind score and applies a review: label. The score describes a public profile, not the quality of the contribution.",
+        "example": "Five score bands, including an explicit no-score label when a score is unavailable."
+      },
+      "intent": {
+        "mode": "Optional · Off by default",
+        "title": "Content classification",
+        "body": "Compare the Issue or PR title and body with descriptions of existing labels you select. When enabled, the classifier can add up to three matching labels without creating or renaming any labels.",
+        "example": "Requires a configured classification service. Try a suggestion in the console before enabling it. AI classification is separate from the author score and may need correction."
+      }
+    },
+    "operations": {
+      "heading": "Preview first. Then decide.",
+      "lead": "Control each repository individually, with changes recorded in the activity log.",
+      "items": {
+        "preview": {
+          "title": "Test a label suggestion",
+          "body": "Try an Issue or PR sample against saved label definitions. The preview makes no GitHub changes and does not save your sample text. Requires a configured classification service."
+        },
+        "backfill": {
+          "title": "Process existing submissions",
+          "body": "Start a backfill yourself for the latest 1–100 open Issues and PRs. Installation only initializes score labels; it does not start a historical backfill."
+        },
+        "cleanup": {
+          "title": "Review and undo Bot changes",
+          "body": "Preview eligible removals before confirming. Cleanup only removes changes attributable to this Bot; manually re-added labels and changes with unclear ownership are kept."
+        }
+      }
+    },
+    "cli": {
+      "heading": "The same controls, from your terminal.",
+      "body": "Go, JavaScript and Python CLIs support status, pause, resume, backfill, retry and cleanup. Use a token with explicit Bot scopes; repository access is still required.",
+      "link": "CLI and API guide",
+      "example": "Example commands · replace owner/repo",
+      "note": "The cleanup command previews removals. A separate confirmation is required to apply them."
+    },
+    "reference": {
+      "heading": "Author-score labels and GitHub search filters"
+    },
+    "labels": {
+      "heading": "Five author-score bands",
+      "lead": "Missing score labels are created on install. Existing custom colors and descriptions are preserved.",
+      "items": {
+        "low": {
+          "range": "0 – 39",
+          "desc": "Fewer public profile signals."
+        },
+        "medium": {
+          "range": "40 – 69",
+          "desc": "Mid-range public profile signals."
+        },
+        "high": {
+          "range": "70 – 89",
+          "desc": "Stronger public profile signals."
+        },
+        "top": {
+          "range": "90 – 100",
+          "desc": "Highest band of the ghfind index."
+        },
+        "noScore": {
+          "range": "No score",
+          "desc": "Unavailable is not zero. Transient failures are retried after 20 and 60 minutes."
+        }
+      }
+    },
+    "queues": {
+      "heading": "Filter in GitHub",
+      "lead": "Paste a filter into your repository’s Issues search. Replace is:issue with is:pr to find pull requests.",
+      "items": {
+        "high": "High-score band",
+        "top": "Top-score band",
+        "low": "Low-score band",
+        "noScore": "Score unavailable"
+      }
+    },
+    "notes": {
+      "heading": "Installation, data and controls",
+      "install": {
+        "heading": "Start with selected repositories",
+        "body": "Install the GitHub App with Issues and Pull requests read/write access. No repository workflow, PAT or secret is needed. Organization repositories may require owner approval."
+      },
+      "privacy": {
+        "heading": "Know what is processed",
+        "body": "Scoring uses the author’s public profile. Optional classification sends the title, body and selected label descriptions to the configured AI service. Comments are off by default; if enabled, they include an introduction and author-score summary, not a code review.",
+        "link": "Read the privacy notice"
+      },
+      "stop": {
+        "heading": "Pause or remove the Bot",
+        "body": "Pause processing per repository from the console, or remove the App in GitHub settings. Existing labels stay; use cleanup to review eligible Bot changes separately."
+      },
+      "rescore": {
+        "heading": "Asking for a rescore",
+        "body": "After the automatic retries, the author or a repository admin can comment @ghfind-review on the issue to score it again."
+      }
+    },
+    "disclaimer": "The score reflects the author’s public GitHub profile, not the quality of this contribution. New contributors may simply have a short public record.",
+    "source": "Source code and self-hosting guide",
     "preview": {
       "label": "Example issue list with review labels",
       "heading": "Issues",
@@ -1421,32 +1548,6 @@
         "top": "Crash when parsing nested config",
         "medium": "Add dark mode to settings",
         "noScore": "Typo in README"
-      }
-    },
-    "labels": {
-      "heading": "Five labels, one glance",
-      "lead": "Missing labels are created on install. Colours or descriptions you have customised are kept.",
-      "items": {
-        "low": {
-          "range": "0 – 39",
-          "desc": "Little public signal. Verify the source first."
-        },
-        "medium": {
-          "range": "40 – 69",
-          "desc": "A typical contributor profile."
-        },
-        "high": {
-          "range": "70 – 89",
-          "desc": "Strong public profile signals."
-        },
-        "top": {
-          "range": "90 – 100",
-          "desc": "Top of the ghfind index."
-        },
-        "noScore": {
-          "range": "No score",
-          "desc": "Score unavailable — not zero. Retried after 20 and 60 minutes."
-        }
       }
     },
     "steps": {
@@ -1465,34 +1566,7 @@
           "body": "On install, the first pages of open issues and PRs are labelled too. Edits and reopens are not rescored."
         }
       }
-    },
-    "queues": {
-      "heading": "Turn score ranges into review queues",
-      "lead": "Paste a filter into your repository's issue search and start with the queue that fits your time.",
-      "items": {
-        "high": "High-score issues",
-        "top": "Top-score issues",
-        "low": "Low-score issues to verify",
-        "noScore": "No score — needs context"
-      }
-    },
-    "notes": {
-      "rescore": {
-        "heading": "Asking for a rescore",
-        "body": "After the automatic retries, the author or a repository admin can comment @ghfind-review on the issue to score it again."
-      },
-      "privacy": {
-        "heading": "What it touches",
-        "body": "No source files, no issue bodies. It keeps only the installation, repository, issue number, score and job state; finished jobs are purged after 30 days. Authors with a public email may get one score email per 72 hours, with one-click unsubscribe.",
-        "link": "Privacy notice"
-      },
-      "stop": {
-        "heading": "Stop anytime",
-        "body": "Remove repositories, suspend or uninstall the app from your GitHub settings. Existing labels stay where they are."
-      }
-    },
-    "disclaimer": "The score reflects the author's public GitHub profile, not the quality of this contribution. New contributors may simply have a short public record.",
-    "source": "Source code and self-hosting guide"
+    }
   },
   "integrations": {
     "eyebrow": "For developers and agents",
