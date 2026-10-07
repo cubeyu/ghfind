@@ -1,4 +1,5 @@
-import { jsonRequest, record } from "./github";
+import { record } from "./github";
+import { aiJsonRequest } from "./provider-http";
 
 // Optional secret: `wrangler types` only emits required secrets, so declare it here.
 declare global {
@@ -24,7 +25,8 @@ export async function complete(
   // reasoning_effort is StepFun-scoped; other providers may reject it.
   const stepfun = host === "stepfun.com" || host.endsWith(".stepfun.com");
   const body = record(
-    await jsonRequest(
+    await aiJsonRequest(
+      env,
       `${base}/chat/completions`,
       {
         method: "POST",
@@ -41,6 +43,7 @@ export async function complete(
           ],
           temperature: 0.2,
           stream: false,
+          ...(env.BYOK_REQUIRE_PUBLIC_ENDPOINT ? { max_tokens: 512 } : {}),
           ...(stepfun ? { reasoning_effort: "low" } : {}),
         }),
       },
@@ -54,5 +57,7 @@ export async function complete(
       : undefined;
   if (typeof content !== "string" || !content.trim())
     throw new Error("Empty LLM response");
-  return content.trim();
+  // An untrusted provider must not publish the credential it received in an
+  // issue greeting, even if it reflects Authorization into its response.
+  return content.replaceAll(key, "[redacted]").trim();
 }

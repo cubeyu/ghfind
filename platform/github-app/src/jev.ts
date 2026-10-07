@@ -1,4 +1,5 @@
-import { jsonRequest, record } from "./github";
+import { record } from "./github";
+import { aiJsonRequest } from "./provider-http";
 
 // Optional secret: `wrangler types` only emits required secrets.
 declare global {
@@ -30,7 +31,8 @@ export function jevConfigured(env: Env): boolean {
   }
 }
 
-// Trusted operator configuration, never repository settings or request input.
+// Operator and resolved repository configuration share the endpoint format.
+// BYOK URLs additionally pass the public endpoint guard at request time.
 export function jevEndpoint(env: Env): string {
   const setting = env.JEV_BASE_URL?.trim() || JEV_BASE_URL;
   try {
@@ -184,7 +186,8 @@ export async function classifyJev(
   if (!supportedModel(model)) throw new Error("Unsupported Jev model");
   const threshold = jevThreshold(env);
   const endpoint = jevEndpoint(env);
-  const response = await jsonRequest(
+  const response = await aiJsonRequest(
+    env,
     endpoint,
     {
       method: "POST",

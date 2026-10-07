@@ -44,6 +44,12 @@ afterEach(() => {
 });
 
 describe("llm complete", () => {
+  it("redacts an API key reflected by an untrusted model response", async () => {
+    reply(200, ok(`Welcome. ${KEY} ${KEY}`));
+    const content = await complete(llmEnv(), "sys", PROMPT, Date.now() + 5000);
+    expect(content).toBe("Welcome. [redacted] [redacted]");
+    expect(content).not.toContain(KEY);
+  });
   it("posts to StepFun by default and returns trimmed content", async () => {
     reply(200, ok("  hello  \n"));
     expect(await complete(llmEnv(), "sys", PROMPT, Date.now() + 5000)).toBe(
