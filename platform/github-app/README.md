@@ -153,9 +153,10 @@ owner must opt in again. Reads require repository write or admin access.
   or if the LLM fails, the plain table is posted. Backfill never comments,
   and rescores only update an existing comment.
 
-Intent classification uses `TRIAGE_PROVIDER=llm` by default and the optional
-`LLM_API_KEY`. Set `TRIAGE_PROVIDER=jev` with `OPENROUTER_API_KEY` to use Jev's
-OpenRouter Decisions API instead. AI greetings independently use `LLM_API_KEY`;
+Production intent classification is configured with `TRIAGE_PROVIDER=jev` and
+the `OPENROUTER_API_KEY` secret for Jev's OpenRouter Decisions API. Local/staging
+configuration retains `TRIAGE_PROVIDER=llm` with the optional `LLM_API_KEY`.
+AI greetings independently use `LLM_API_KEY`;
 unavailable greetings fall back to the plain score table. Missing classifier
 credentials disable intent labeling. Issue and pull request text is never stored;
 opting in sends it to the configured classification provider.
@@ -436,9 +437,9 @@ until then the API answers `auth_unavailable`.
 
 `LLM_API_KEY` is an optional secret and is deliberately not in
 `secrets.required`. Without it, AI greetings are off; intent classification is
-also off under the default `llm` provider. Jev uses its separate OpenRouter
-secret. The settings page reports these capabilities separately. For greetings
-and the default classifier:
+also off when using the `llm` provider. Production Jev uses its separate
+OpenRouter secret. The settings page reports these capabilities separately.
+For AI greetings or the local/staging LLM classifier:
 
 ```sh
 pnpm exec wrangler secret put LLM_API_KEY --env production
@@ -450,6 +451,14 @@ the defaults or point them at another OpenAI-compatible provider.
 
 For Jev intent classification, set `TRIAGE_PROVIDER=jev`, install the optional
 `OPENROUTER_API_KEY` secret, and retain `JEV_MODEL=typesafe/jev-1.13`.
+Production vars already select Jev; this does not enable any repository's
+intent-label opt-in. `JEV_BASE_URL` is an operator-only API root, defaulting to
+`https://openrouter.ai/api`; the Worker appends `/alpha/decisions`. A trailing
+slash is optional. Custom roots must use HTTPS without userinfo, query or
+fragment, and must implement the same typed Decisions API and pinned model.
+Configure the URL in Worker vars, not repository settings; the API key stays
+in the `OPENROUTER_API_KEY` secret. Invalid URLs disable Jev readiness and fail
+before sending any request. Redirects are rejected without forwarding the key.
 `JEV_THRESHOLD=0.8` is a conservative initial setting, not a calibrated accuracy
 claim. Each saved existing label is evaluated against its GitHub description;
 at most three qualifying labels are added. Invalid or unavailable decisions
