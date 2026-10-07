@@ -1401,7 +1401,7 @@
   },
   "githubBot": {
     "metaTitle": "ghfind Review | Bot GitHub để phân loại Issue và PR",
-    "metaDescription": "Quản lý nhãn điểm tác giả, phân loại nội dung tùy chọn, xem trước, xử lý các mục có sẵn và dọn dẹp qua bảng điều khiển Bot ghfind Review hoặc CLI.",
+    "metaDescription": "ghfind Review quản lý nhãn điểm tác giả, phân loại nội dung, xem trước, dọn dẹp và kết nối dịch vụ AI của bạn (BYOK) theo từng kho mã.",
     "topline": {
       "section": "Tích hợp",
       "current": "GitHub Bot"
@@ -1451,8 +1451,33 @@
         "mode": "Tùy chọn · Mặc định tắt",
         "title": "Phân loại nội dung",
         "body": "So sánh tiêu đề và nội dung Issue hoặc PR với mô tả của các nhãn có sẵn mà bạn chọn. Khi được bật, bộ phân loại có thể thêm tối đa ba nhãn phù hợp mà không tạo mới hoặc đổi tên nhãn.",
-        "example": "Cần có dịch vụ phân loại đã được cấu hình. Thử gợi ý trong bảng điều khiển trước khi bật. Phân loại bằng AI độc lập với điểm tác giả và có thể cần chỉnh sửa."
+        "example": "Cần có dịch vụ phân loại đã được cấu hình. Thử gợi ý trong bảng điều khiển trước khi bật. Phân loại bằng AI độc lập với điểm tác giả và có thể cần chỉnh sửa. Kết nối dịch vụ AI của bạn trong cài đặt kho mã."
       }
+    },
+    "byok": {
+      "heading": "Kết nối dịch vụ AI của bạn",
+      "lead": "Dùng địa chỉ API, khóa và mô hình của bạn. Cấu hình riêng từng kho mã, rồi chọn dịch vụ của bạn hoặc của nền tảng.",
+      "cta": "Cấu hình dịch vụ AI",
+      "setup": "Mở kho mã, rồi chọn Dịch vụ AI. Cần quyền quản trị kho mã để lưu cấu hình.",
+      "items": {
+        "provider": {
+          "title": "Chọn dịch vụ cho từng kho mã",
+          "body": "Chuyển giữa dịch vụ nền tảng và URL cơ sở API HTTPS công khai của bạn. Mỗi kho mã lưu cấu hình riêng."
+        },
+        "protocol": {
+          "title": "Chọn giao thức và mô hình",
+          "body": "Chat Completions tương thích OpenAI hỗ trợ phân loại nội dung và tạo lời chào. Jev Decisions chỉ phân loại nội dung."
+        },
+        "key": {
+          "title": "Bảo vệ khóa của bạn",
+          "body": "Khóa API được lưu dưới dạng mã hóa và không bao giờ hiển thị lại. Bạn có thể thay thế hoặc xóa khóa đã lưu trong bảng điều khiển."
+        },
+        "test": {
+          "title": "Kiểm tra trước khi bật",
+          "body": "Chủ động kiểm tra kết nối đã lưu. Kiểm tra không thay đổi GitHub và không lưu văn bản mẫu. Phân loại nội dung vẫn mặc định tắt."
+        }
+      },
+      "billing": "Nhà cung cấp tính phí các yêu cầu bằng khóa của bạn. Nếu dịch vụ của bạn gặp lỗi, Bot không âm thầm chuyển sang dịch vụ nền tảng."
     },
     "operations": {
       "heading": "Xem trước. Sau đó quyết định.",
