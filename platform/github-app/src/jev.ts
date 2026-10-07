@@ -7,7 +7,8 @@ declare global {
   }
 }
 
-export const JEV_ENDPOINT = "https://openrouter.ai/api/alpha/decisions";
+export const JEV_BASE_URL = "https://openrouter.ai/api";
+export const JEV_ENDPOINT = `${JEV_BASE_URL}/alpha/decisions`;
 export const JEV_MODEL = "typesafe/jev-1.13";
 export const JEV_THRESHOLD = 0.8;
 export const JEV_REQUEST_VERSION = "description-only-v4-concrete-evidence";
@@ -19,12 +20,35 @@ const supportedModel = (model: string) =>
 export function jevConfigured(env: Env): boolean {
   try {
     jevThreshold(env);
+    jevEndpoint(env);
     return (
       !!env.OPENROUTER_API_KEY?.trim() &&
       supportedModel(env.JEV_MODEL?.trim() || JEV_MODEL)
     );
   } catch {
     return false;
+  }
+}
+
+// Trusted operator configuration, never repository settings or request input.
+export function jevEndpoint(env: Env): string {
+  const setting = env.JEV_BASE_URL?.trim() || JEV_BASE_URL;
+  try {
+    const base = new URL(setting);
+    if (
+      !/^https:\/\//i.test(setting) ||
+      base.protocol !== "https:" ||
+      !base.hostname ||
+      base.username ||
+      base.password ||
+      setting.split("/")[2].includes("@") ||
+      /[?#\\\s]/.test(setting)
+    )
+      throw new Error();
+    return `${base.href.replace(/\/+$/, "")}/alpha/decisions`;
+  } catch {
+    // Do not echo potentially sensitive operator input into logs.
+    throw new Error("Invalid Jev base URL");
   }
 }
 export interface IntentLabel {
@@ -159,8 +183,9 @@ export async function classifyJev(
   const model = env.JEV_MODEL?.trim() || JEV_MODEL;
   if (!supportedModel(model)) throw new Error("Unsupported Jev model");
   const threshold = jevThreshold(env);
+  const endpoint = jevEndpoint(env);
   const response = await jsonRequest(
-    JEV_ENDPOINT,
+    endpoint,
     {
       method: "POST",
       headers: {

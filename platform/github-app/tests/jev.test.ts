@@ -4,6 +4,7 @@ import { ApiError } from "../src/github";
 import {
   classifyJev,
   JEV_ENDPOINT,
+  JEV_BASE_URL,
   JEV_MODEL,
   jevConfigured,
   jevRequest,
@@ -56,6 +57,87 @@ const preview = (
   );
 
 describe("Jev intent decisions", () => {
+  it("targets only the configured HTTPS API root with the Decisions path", async () => {
+    const fetcher = mock(response());
+    for (const [base, endpoint] of [
+      ["", JEV_ENDPOINT],
+      ["   ", JEV_ENDPOINT],
+      [JEV_BASE_URL, JEV_ENDPOINT],
+      [` ${JEV_BASE_URL}/ `, JEV_ENDPOINT],
+      [
+        "https://decisions.example.test/api///",
+        "https://decisions.example.test/api/alpha/decisions",
+      ],
+      [
+        "https://decisions.example.test:8443/custom/v1",
+        "https://decisions.example.test:8443/custom/v1/alpha/decisions",
+      ],
+    ]) {
+      const settings = { ...jevEnv, JEV_BASE_URL: base };
+      expect(jevConfigured(settings)).toBe(true);
+      expect((await preview(settings)).labels).toEqual(["问题"]);
+      const [url, init] = fetcher.mock.calls.at(-1) as unknown as [
+        string,
+        RequestInit,
+      ];
+      expect(url).toBe(endpoint);
+      expect(init.method).toBe("POST");
+      expect(init.redirect).toBe("manual");
+      expect(new Headers(init.headers).get("authorization")).toBe(
+        `Bearer ${KEY}`,
+      );
+      expect(JSON.parse(String(init.body)).model).toBe(JEV_MODEL);
+    }
+    expect(fetcher).toHaveBeenCalledTimes(6);
+  });
+
+  it("rejects unsafe or malformed operator URLs before sending credentials", async () => {
+    const fetcher = mock(response());
+    for (const base of [
+      "http://decisions.example.test/api",
+      "//decisions.example.test/api",
+      "not-a-url",
+      "https:decisions.example.test/api",
+      "https://user:private@decisions.example.test/api",
+      "https://user@decisions.example.test/api",
+      "https://@decisions.example.test/api",
+      "https://decisions.example.test/api?token=private",
+      "https://decisions.example.test/api?",
+      "https://decisions.example.test/api#private",
+      "https://decisions.example.test/api#",
+      "https://decisions.example.test/a pi",
+      "https://decisions.example.test/a\npi",
+      "https:\\decisions.example.test/api",
+    ]) {
+      const settings = { ...jevEnv, JEV_BASE_URL: base };
+      expect(jevConfigured(settings)).toBe(false);
+      await expect(preview(settings)).rejects.toThrow("Invalid Jev base URL");
+    }
+    expect(fetcher).not.toHaveBeenCalled();
+  });
+
+  it("fails closed on endpoint redirects without forwarding credentials", async () => {
+    const fetcher = vi.fn(
+      async () =>
+        new Response(null, {
+          status: 307,
+          headers: { Location: "https://other.example.test/collect" },
+        }),
+    );
+    vi.stubGlobal("fetch", fetcher);
+    await expect(
+      preview({
+        ...jevEnv,
+        JEV_BASE_URL: "https://decisions.example.test/api",
+      }),
+    ).rejects.toMatchObject({ status: 307 });
+    expect(fetcher).toHaveBeenCalledTimes(1);
+    expect(fetcher.mock.calls[0]).toEqual([
+      "https://decisions.example.test/api/alpha/decisions",
+      expect.objectContaining({ redirect: "manual" }),
+    ]);
+  });
+
   it("uses Decisions Noul questions with authoritative definitions and opaque IDs", async () => {
     const fetcher = mock(response());
     const result = await preview();

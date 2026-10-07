@@ -27,10 +27,11 @@
     "ENABLED": "false",
     "ALLOWED_ACCOUNTS": "AsperforMias",
     // Empty uses the defaults in src/llm.ts. LLM_API_KEY is an optional
-    // secret: without it, triage and AI comments are unavailable.
+    // secret: without it, LLM triage and AI greetings are unavailable.
     "LLM_BASE_URL": "",
     "LLM_MODEL": "",
     "TRIAGE_PROVIDER": "llm",
+    "JEV_BASE_URL": "https://openrouter.ai/api",
     "JEV_MODEL": "typesafe/jev-1.13",
     "JEV_THRESHOLD": "0.8",
   },
@@ -87,7 +88,8 @@
         "ALLOWED_ACCOUNTS": "*",
         "LLM_BASE_URL": "",
         "LLM_MODEL": "",
-        "TRIAGE_PROVIDER": "llm",
+        "TRIAGE_PROVIDER": "jev",
+        "JEV_BASE_URL": "https://openrouter.ai/api",
         "JEV_MODEL": "typesafe/jev-1.13",
         "JEV_THRESHOLD": "0.8",
       },
