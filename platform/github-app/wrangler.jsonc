@@ -26,6 +26,13 @@
     "APP_CLIENT_ID": "",
     "ENABLED": "false",
     "ALLOWED_ACCOUNTS": "AsperforMias",
+    // Empty uses the defaults in src/llm.ts. LLM_API_KEY is an optional
+    // secret: without it, triage and AI comments are unavailable.
+    "LLM_BASE_URL": "",
+    "LLM_MODEL": "",
+    "TRIAGE_PROVIDER": "llm",
+    "JEV_MODEL": "typesafe/jev-1.13",
+    "JEV_THRESHOLD": "0.8",
   },
   "send_email": [{ "name": "EMAIL" }],
   "services": [
@@ -38,7 +45,7 @@
     {
       "binding": "DB",
       "database_name": "ghfind-bot-staging",
-      "database_id": "00000000-0000-0000-0000-000000000001",
+      "database_id": "a3f9b6af-a76f-4659-887f-876a26b1a39b",
       "migrations_dir": "migrations",
     },
   ],
@@ -78,6 +85,11 @@
         "APP_CLIENT_ID": "Iv23liwemvbc0Ld4xctK",
         "ENABLED": "true",
         "ALLOWED_ACCOUNTS": "*",
+        "LLM_BASE_URL": "",
+        "LLM_MODEL": "",
+        "TRIAGE_PROVIDER": "llm",
+        "JEV_MODEL": "typesafe/jev-1.13",
+        "JEV_THRESHOLD": "0.8",
       },
       "send_email": [{ "name": "EMAIL" }],
       "services": [
