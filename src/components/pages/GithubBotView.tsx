@@ -21,6 +21,7 @@ const ADMIN_PAGES = [
   { id: "activity", path: "/admin/activity", icon: History },
 ] as const;
 const OPERATIONS = ["preview", "backfill", "cleanup"] as const;
+const AI_OPTIONS = ["provider", "protocol", "key", "test"] as const;
 const QUEUES = [
   { id: "high", filter: 'is:open is:issue label:"review: high"' },
   { id: "top", filter: 'is:open is:issue label:"review: top"' },
@@ -85,6 +86,29 @@ export function GithubBotView({ locale, t }: { locale: string; t: Translator }) 
             </article>
           ))}
         </div>
+      </section>
+      <section className={styles.section} aria-labelledby="byok-heading">
+        <div className={styles.byok}>
+          <div className={styles.sectionHeading}>
+            <h2 id="byok-heading">{t("byok.heading")}</h2>
+            <p>{t("byok.lead")}</p>
+            <div className={styles.actions}>
+              <a className={styles.cta} href={botLink("/admin/repositories")}>
+                {t("byok.cta")} <ArrowRight size={17} aria-hidden />
+              </a>
+            </div>
+            <p className={styles.byokNote}>{t("byok.setup")}</p>
+          </div>
+          <dl className={styles.byokDetails}>
+            {AI_OPTIONS.map(id => (
+              <div key={id}>
+                <dt>{t(`byok.items.${id}.title`)}</dt>
+                <dd>{t(`byok.items.${id}.body`)}</dd>
+              </div>
+            ))}
+          </dl>
+        </div>
+        <p className={styles.byokBilling}>{t("byok.billing")}</p>
       </section>
       <section className={styles.section} aria-labelledby="operations-heading">
         <div className={styles.sectionHeading}>

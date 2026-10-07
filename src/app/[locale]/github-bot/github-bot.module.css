@@ -41,6 +41,15 @@
 .classification h3 { font-size: 18px; font-weight: 600; margin-bottom: 10px; }
 .classification article > p:not(.featureMode) { font-size: 14px; line-height: 1.85; color: var(--muted-foreground); }
 .classification article > .featureExample { margin-top: 16px; padding-inline-start: 14px; border-inline-start: 2px solid var(--border); font-size: 13px; }
+.byok { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.2fr); gap: 48px; align-items: start; }
+.byok .sectionHeading { min-width: 0; margin-bottom: 0; }
+.byok .byokNote { margin-top: 16px; font-size: 13px; }
+.byokDetails { min-width: 0; margin: 0; }
+.byokDetails > div { padding: 16px 0; border-top: 1px solid var(--border); }
+.byokDetails > div:first-child { padding-top: 0; border-top: 0; }
+.byokDetails dt { font-size: 15px; font-weight: 600; line-height: 1.5; }
+.byokDetails dd { margin: 6px 0 0; color: var(--muted-foreground); font-size: 14px; line-height: 1.8; overflow-wrap: anywhere; }
+.byokBilling { margin-top: 24px; padding-top: 16px; border-top: 1px solid var(--border); color: var(--muted-foreground); font-size: 13px; line-height: 1.8; }
 .operations { margin: 0; }
 .operations > div { display: grid; grid-template-columns: minmax(180px, .8fr) minmax(0, 1.6fr); gap: 20px; padding: 18px 0; border-top: 1px solid var(--border); align-items: baseline; }
 .index { flex-shrink: 0; font-size: 12px; font-variant-numeric: tabular-nums; font-weight: 400; color: var(--gb-accent); }
@@ -82,6 +91,7 @@
   .sectionHeading { display: block; }
   .sectionHeading > p { margin-top: 10px; }
   .cli { grid-template-columns: 1fr; gap: 24px; }
+  .byok { grid-template-columns: 1fr; gap: 28px; }
   .notes { grid-template-columns: 1fr; gap: 24px; }
 }
 @media (max-width: 640px) {
@@ -93,6 +103,7 @@
   .classification { grid-template-columns: 1fr; gap: 28px; }
   .sectionHeading h2, .cli h2 { font-size: 21px; }
   .sectionHeading > p, .classification article > p:not(.featureMode), .operations dd, .cli p, .notes p { font-size: 16px; }
+  .byokDetails dd { font-size: 16px; }
   .operations > div { grid-template-columns: 1fr; gap: 8px; }
   .operations dd { padding-inline-start: 34px; }
   .cli { padding: 24px 20px; }
