@@ -22,10 +22,17 @@ import {
   scoreToLabel,
   scoreComment,
   syncComment,
+  commentTemplate,
   COMMENT_MARKER,
 } from "../src/review";
 import { ui } from "../src/ui";
 import { ApiError, jsonRequest, appJWT, github } from "../src/github";
+import {
+  DEFAULT_SETTINGS,
+  putBackfillLimit,
+  putSettings,
+  RepoSettings,
+} from "../src/settings";
 
 declare const TEST_SQL: string[];
 const testEnv = env as Env;
@@ -1050,6 +1057,15 @@ describe("Issue support and score comments", () => {
     expect(body).not.toMatch(/@(?!ghfind-review\b)[A-Za-z0-9-]/);
     expect(scoreComment("AsperforMias", 82.7)).not.toContain("重新评分");
   });
+  it("omits the mention hint on pull requests, where mentions are ignored", () => {
+    const body = scoreComment("AsperforMias", null, "ghfind-review", true);
+    expect(body).toContain("No score does not mean zero.");
+    expect(body).not.toContain("@ghfind-review");
+    expect(body).not.toContain("重新评分");
+    expect(
+      commentTemplate("AsperforMias", null, "ghfind-review-test", true, true),
+    ).not.toContain("@ghfind-review-test");
+  });
   it("recovers an ambiguous comment creation without posting a duplicate", async () => {
     const body = scoreComment("AsperforMias", 82.7);
     intercept(`/repos/${repo}/issues/1/comments?per_page=100&page=1`, []);
@@ -1059,9 +1075,9 @@ describe("Issue support and score comments", () => {
         github("test"),
         repo,
         1,
-        "AsperforMias",
-        82.7,
         "ghfind-review-test",
+        commentTemplate("AsperforMias", 82.7, "ghfind-review-test"),
+        async () => "",
       ),
     ).rejects.toBeInstanceOf(ApiError);
     intercept(`/repos/${repo}/issues/1/comments?per_page=100&page=1`, [
@@ -1075,9 +1091,9 @@ describe("Issue support and score comments", () => {
       github("test"),
       repo,
       1,
-      "AsperforMias",
-      82.7,
       "ghfind-review-test",
+      commentTemplate("AsperforMias", 82.7, "ghfind-review-test"),
+      async () => "",
     );
   });
   it("paginates, ignores spoofed user markers and updates only its own comment", async () => {
@@ -1102,9 +1118,9 @@ describe("Issue support and score comments", () => {
       github("test"),
       repo,
       1,
-      "AsperforMias",
-      82.7,
       "ghfind-review-test",
+      commentTemplate("AsperforMias", 82.7, "ghfind-review-test"),
+      async () => "",
     );
   });
   it("parks the installation until the GitHub App quota resets", async () => {
