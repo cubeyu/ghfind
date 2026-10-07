@@ -20,6 +20,20 @@ test('current exact-checkout CI, direct production and containment gates satisfy
   assert.match(check(), /workflow contract passed/);
 });
 
+test('bot release cannot precede SCORE, use a stale SHA, skip migrations or escape serialization', () => {
+  const production = originals['deploy-cf-production.yml'];
+  const begin = production.indexOf('\n  deploy-bot:\n');
+  for (const fragment of ['needs: [deploy]', 'environment: Production', 'group: ghfind-bot-production',
+    'cancel-in-progress: false', 'ref: ${{ github.event.workflow_run.head_sha }}',
+    'test "$current_main" = "$RELEASE_SHA"', 'pnpm exec wrangler d1 migrations apply ghfind-bot --remote --env production',
+    "github.event.workflow_run.event == 'push'"]) {
+    const unsafe = production.slice(0, begin) + production.slice(begin).replace(fragment, 'removed');
+    assert.throws(() => check({ 'deploy-cf-production.yml': unsafe }), /Bot production gate/);
+  }
+  const unsafe = production.slice(0, begin) + production.slice(begin).replace('    needs: [deploy]', '    needs: [deploy]\n    continue-on-error: true');
+  assert.throws(() => check({ 'deploy-cf-production.yml': unsafe }), /Bot must wait/);
+});
+
 test('gate text elsewhere does not compensate for a production job that lost its dependency or environment', () => {
   for (const removed of ['    needs: [authorize]\n', '    environment: Production\n']) {
     const content = originals['deploy-cf-production.yml'].replace(removed, '') + `\n# Documentation only: ${removed.trim()}\n`;

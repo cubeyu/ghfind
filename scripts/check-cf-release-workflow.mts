@@ -18,6 +18,25 @@ function jobBody(source: string, job: string): string {
 }
 const authorization = jobBody(workflow, "authorize");
 const deployJob = jobBody(workflow, "deploy");
+const botJob = jobBody(workflow, "deploy-bot");
+for (const fragment of ['needs: [deploy]', 'environment: Production',
+  'group: ghfind-bot-production', 'cancel-in-progress: false',
+  "github.repository == 'hikariming/ghfind'", "github.event.workflow_run.conclusion == 'success'",
+  "github.event.workflow_run.event == 'push'", "github.event.workflow_run.head_branch == 'main'",
+  "github.event.workflow_run.repository.full_name == 'hikariming/ghfind'",
+  'ref: ${{ github.event.workflow_run.head_sha }}', 'persist-credentials: false',
+  'RELEASE_SHA: ${{ github.event.workflow_run.head_sha }}',
+  'test "$(git rev-parse HEAD)" = "$RELEASE_SHA"',
+  'git ls-remote origin refs/heads/main', 'test "$current_main" = "$RELEASE_SHA"',
+  'pnpm exec wrangler d1 migrations apply ghfind-bot --remote --env production',
+  'pnpm exec wrangler deploy --env production --tag "production-$RELEASE_SHA"']) {
+  if (!botJob.includes(fragment)) throw new Error(`Bot production gate missing ${fragment}`);
+}
+if (/always\(\)|continue-on-error:\s*true/.test(botJob))
+  throw new Error('Bot must wait for a successful legacy SCORE deployment');
+const botOrder = ['Require exact current main', 'wrangler d1 migrations apply ghfind-bot', 'wrangler deploy --env production'];
+for (let i = 1; i < botOrder.length; i++)
+  if (botJob.indexOf(botOrder[i]) <= botJob.indexOf(botOrder[i - 1])) throw new Error('Unsafe bot deployment ordering');
 for (const fragment of ['workflow_run:', 'workflows: ["CI"]', 'types: [completed]', 'branches: [main]', 'cancel-in-progress: false']) {
   if (!workflow.includes(fragment)) throw new Error(`Production trigger missing ${fragment}`);
 }
