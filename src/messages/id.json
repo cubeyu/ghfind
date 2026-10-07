@@ -1401,7 +1401,7 @@
   },
   "githubBot": {
     "metaTitle": "ghfind Review | Bot GitHub untuk klasifikasi Issue dan PR",
-    "metaDescription": "Kelola label skor penulis, klasifikasi konten opsional, pratinjau, pemrosesan kiriman lama, dan pembersihan melalui konsol Bot ghfind Review atau CLI.",
+    "metaDescription": "ghfind Review memadukan label skor penulis dan klasifikasi konten dengan pratinjau, pembersihan, serta layanan AI milik Anda (BYOK), per repositori.",
     "topline": {
       "section": "Integrasi",
       "current": "GitHub Bot"
@@ -1451,8 +1451,33 @@
         "mode": "Opsional · Nonaktif secara bawaan",
         "title": "Klasifikasi konten",
         "body": "Bandingkan judul dan isi Issue atau PR dengan deskripsi label yang sudah ada dan Anda pilih. Saat diaktifkan, pengklasifikasi dapat menambahkan hingga tiga label yang cocok tanpa membuat atau mengganti nama label.",
-        "example": "Memerlukan layanan klasifikasi yang sudah dikonfigurasi. Coba saran di konsol sebelum mengaktifkannya. Klasifikasi AI terpisah dari skor penulis dan mungkin perlu dikoreksi."
+        "example": "Memerlukan layanan klasifikasi yang sudah dikonfigurasi. Coba saran di konsol sebelum mengaktifkannya. Klasifikasi AI terpisah dari skor penulis dan mungkin perlu dikoreksi. Hubungkan layanan AI milik Anda melalui pengaturan repositori."
       }
+    },
+    "byok": {
+      "heading": "Gunakan layanan AI milik Anda",
+      "lead": "Gunakan alamat API, kunci, dan model Anda. Atur tiap repositori, lalu pilih layanan Anda atau layanan platform.",
+      "cta": "Atur layanan AI Anda",
+      "setup": "Buka repositori, lalu pilih Layanan AI. Menyimpan pengaturan memerlukan akses admin repositori.",
+      "items": {
+        "provider": {
+          "title": "Pilih layanan per repositori",
+          "body": "Beralih antara layanan platform dan URL dasar API HTTPS publik milik Anda. Setiap repositori menyimpan konfigurasi sendiri."
+        },
+        "protocol": {
+          "title": "Pilih protokol dan model",
+          "body": "Chat Completions yang kompatibel dengan OpenAI dapat mengklasifikasikan konten dan membuat sapaan. Jev Decisions hanya mengklasifikasikan konten."
+        },
+        "key": {
+          "title": "Jaga kerahasiaan kunci",
+          "body": "Kunci API disimpan dalam bentuk terenkripsi dan tidak pernah ditampilkan kembali. Ganti atau hapus kunci tersimpan melalui konsol."
+        },
+        "test": {
+          "title": "Uji sebelum mengaktifkan",
+          "body": "Jalankan pengujian koneksi tersimpan secara eksplisit. Pengujian tidak mengubah GitHub dan tidak menyimpan teks contoh. Klasifikasi konten tetap nonaktif secara bawaan."
+        }
+      },
+      "billing": "Penyedia Anda menagih permintaan melalui kunci Anda. Jika layanan Anda gagal, Bot tidak diam-diam beralih ke layanan platform."
     },
     "operations": {
       "heading": "Lihat pratinjau. Lalu putuskan.",
